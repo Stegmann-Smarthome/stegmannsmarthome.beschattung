@@ -1,0 +1,12 @@
+{
+    "id": "{F876676A-C88D-7EBE-DCA8-57BFB1EB521D}",
+    "name": "Beschattung",
+    "author": "Stegmann Smarthome",
+    "url": "  https://www.stegmann-smarthome.de",
+    "compatibility": {
+        "version": "8.0"
+    },
+    "version": "1.1.4",
+    "build": 0,
+    "date": 1753195738
+}

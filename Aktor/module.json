@@ -1,0 +1,14 @@
+{
+    "id": "{2D226140-2A65-8A62-5DD2-D3AFB4083F66}",
+    "name": "Aktor",
+    "type": 3,
+    "vendor": "Stegmann Smarthome",
+    "aliases": [
+        "Beschattung: Aktor"
+    ],
+    "parentRequirements": [],
+    "childRequirements": [],
+    "implemented": [],
+    "prefix": "BS",
+    "url": "https://www.stegmann-smarthome.de"
+}
