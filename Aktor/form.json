@@ -16,20 +16,23 @@
                 "name": "prop_position",
                 "value": "",
                 "caption": "Rolladenstellung: Aktor-ID - Auswahl der Variable",
-                "width": "600px"
+                "width": "600px",
+                "onChange": "BS_PositionChanged($id, $prop_position);"
               },
               {
                 "type": "SelectVariable",
                 "name": "prop_lamelle",
                 "value": "",
                 "caption": "Lamellenstellung: Aktor-ID - Auswahl der Variable",
-                "width": "600px"
+                "width": "600px",
+                "onChange": "BS_LamelleChanged($id, $prop_lamelle);"
               },
               {
                 "type": "Select",
                 "name": "prop_wochenplan",
                 "caption": "Wochenplanerstellung:",
                 "width": "600px",
+                "onChange": "BS_WochenplanChanged($id, $prop_wochenplan);",
                 "options": [
                   { "caption": "Kein Wochenplan / Wochenplan löschen", "value": 0 },
                   { "caption": "Wochenplan: Eine Gruppe: Gesamte Woche (Mo - So)", "value": 1 },
@@ -53,20 +56,23 @@
                 "name": "prop_helligkeit",
                 "caption": "Helligkeitssensor:",
                 "hint": "Wähle die Variable, die den aktuellen Lux-Wert liefert.",
-                "width": "400px"
+                "width": "400px",
+                "onChange": "BS_SensorChanged($id, $prop_helligkeit, $prop_temperatur, $prop_azimut);"
               },
               {
                 "type": "SelectVariable",
                 "name": "prop_temperatur",
                 "caption": "Temperatursensor:",
                 "hint": "Wähle die Variable, die die aktuelle Temperatur liefert.",
-                "width": "400px"
+                "width": "400px",
+                "onChange": "BS_SensorChanged($id, $prop_helligkeit, $prop_temperatur, $prop_azimut);"
               },
               {
                 "type": "SelectVariable",
                 "name": "prop_azimut",
                 "caption": "Azimut:",
-                "width": "400px"
+                "width": "400px",
+                "onChange": "BS_SensorChanged($id, $prop_helligkeit, $prop_temperatur, $prop_azimut);"
               }
             ]
           }
@@ -124,7 +130,8 @@
                   "type": "CheckBox",
                   "name": "prop_automatikmodus_aktivieren",
                   "caption": "Automatikmodus",
-                  "width": "300px"
+                  "width": "300px",
+                  "onChange": "BS_AutomatikModusChanged($id, $prop_automatikmodus_aktivieren);"
                 },
                 {
                   "type": "Label",
@@ -146,6 +153,16 @@
                   "width": "420px"
                 }
               ]
+            },
+            {
+                  "type": "Label",
+                  "caption": "",
+                  "width": "120px"
+            },
+            {
+                  "type": "Label",
+                  "caption": "",
+                  "width": "120px"
             },
             {
               "type": "RowLayout",
@@ -188,24 +205,6 @@
                   "items": [
                     {
                       "type": "NumberSpinner",
-                      "name": "prop_automatik_grenzwert_temperatur",
-                      "caption": "Temperatur: Grenzwert für Beschattung",
-                      "suffix": "°C",
-                      "minimum": 0,
-                      "width": "300px",
-                      "hint": "Ab dieser Temperatur wird beschattet (Rollos fahren runter)."
-                    },
-                    {
-                      "type": "NumberSpinner",
-                      "name": "prop_automatik_grenzwert_helligkeit",
-                      "caption": "Helligkeit: Grenzwert für Beschattung",
-                      "suffix": "Lux",
-                      "minimum": 0,
-                      "width": "300px",
-                      "hint": "Unter dieser Temperatur werden Rollos wieder hochgefahren."
-                    },
-                    {
-                      "type": "NumberSpinner",
                       "name": "prop_automatik_debounce_min",
                       "caption": "Prüfintervall",
                       "suffix": "Minuten",
@@ -217,6 +216,7 @@
                       "type": "Select",
                       "name": "prop_azimut_preset",
                       "caption": "Fensterausrichtung",
+                      "onChange": "BS_PresetChanged($id, $prop_azimut_preset);",
                       "options": [
                         { "caption": "Manuell", "value": 0 },
                         { "caption": "Süd", "value": 1 },
@@ -357,32 +357,6 @@
             }
           },
           {
-            "type": "NumberSpinner",
-            "name": "prop_wochenplan_grenzwert_helligkeit_hochfahren",
-            "caption": "Erst beim erreichen / überschreiten des eingestellten Wertes hochfahren:",
-            "suffix": "Lux",
-            "minimum": 0,
-            "width": "450px",
-            "hint": "Unter diesem Lux-Wert werden Rollos wieder hochgefahren.",
-            "visible": {
-              "name": "prop_wochenplan_helligkeit",
-              "value": true
-            }
-          },
-          {
-            "type": "NumberSpinner",
-            "name": "prop_wochenplan_grenzwert_helligkeit_runterfahren",
-            "caption": "Erst beim erreichen / unterschreiten des eingestellten Wertes herunterfahren:",
-            "suffix": "Lux",
-            "minimum": 0,
-            "width": "450px",
-            "hint": "Ab diesem Lux-Wert wird beschattet (Rollos fahren runter).",
-            "visible": {
-              "name": "prop_wochenplan_helligkeit",
-              "value": true
-            }
-          },
-          {
             "type": "CheckBox",
             "name": "prop_wochenplan_helligkeit_einstellungen",
             "caption": "Einstellbar über Webfront (Grenzwerte: Temperatur + Helligkeit)",
@@ -392,12 +366,6 @@
             }
           }
         ]
-      }
-      ,
-      {
-        "type": "Label",
-        "caption": "",
-        "width": "80px"
       },
       {
         "type": "Label",
@@ -406,8 +374,18 @@
       },
       {
         "type": "Label",
+        "caption": "",
+        "width": "80px"
+      },
+      { "type": "Label",
         "caption": "4. Variablen einblenden / ausblenden",
         "bold": true
+      },
+      {
+        "type": "CheckBox",
+        "name": "prop_level_geschlossen_anzeigen",
+        "caption": "Variable: Level Geschlossen",
+        "width": "700px"
       },
       {
         "type": "CheckBox",
@@ -416,50 +394,72 @@
         "width": "700px"
       },
       {
-        "type": "CheckBox",
-        "name": "prop_level_geschlossen_anzeigen",
-        "caption": "Variable: Level Geschlossen",
-        "width": "700px"
+        "type": "Label",
+        "caption": "",
+        "width": "80px"
+      },
+      {
+        "type": "Label",
+        "caption": "",
+        "width": "80px"
       }
+
     ],
   "actions": [
     {
-      "type": "RowLayout",
+      "type": "ExpansionPanel",
+      "caption": "Variableneinstellungen",
+      "expanded": false,
       "items": [
         {
-          "type": "Button",
-          "caption": "Automatik prüfen",
-          "onClick": "BS_CheckAutoShading($id);",
-          "width": "220px"
-        },
-        {
-          "type": "Label",
-          "caption": "",
-          "width": "16px"
-        },
-        {
-          "type": "Label",
-          "caption": "Hinweis: Führt eine manuelle Prüfung aller Automatikbedingungen aus (Azimut, Helligkeit, Temperatur)."
+          "type": "TestCenter"
         }
       ]
     },
     {
-      "type": "RowLayout",
+      "type": "ExpansionPanel",
+      "caption": "Diagnose",
+      "expanded": false,
       "items": [
         {
-          "type": "Button",
-          "caption": "Sperre zurücksetzen",
-          "onClick": "BS_ResetSperre($id);",
-          "width": "220px"
+          "type": "RowLayout",
+          "items": [
+            {
+              "type": "Button",
+              "caption": "Automatik prüfen",
+              "onClick": "BS_CheckAutoShading($id);",
+              "width": "220px"
+            },
+            {
+              "type": "Label",
+              "caption": "",
+              "width": "16px"
+            },
+            {
+              "type": "Label",
+              "caption": "Hinweis: Führt eine manuelle Prüfung aller Automatikbedingungen aus (Azimut, Helligkeit, Temperatur)."
+            }
+          ]
         },
         {
-          "type": "Label",
-          "caption": "",
-          "width": "15px"
-        },
-        {
-          "type": "Label",
-          "caption": "Hinweis: Setzt die automatische Sperre zurück und erlaubt eine neue Beschattungsaktion."
+          "type": "RowLayout",
+          "items": [
+            {
+              "type": "Button",
+              "caption": "Sperre zurücksetzen",
+              "onClick": "BS_ResetSperre($id);",
+              "width": "220px"
+            },
+            {
+              "type": "Label",
+              "caption": "",
+              "width": "15px"
+            },
+            {
+              "type": "Label",
+              "caption": "Hinweis: Setzt die automatische Sperre zurück und erlaubt eine neue Beschattungsaktion."
+            }
+          ]
         }
       ]
     },

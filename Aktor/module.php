@@ -7,26 +7,12 @@ class Aktor extends IPSModule {
         // Diese Zeile nicht löschen.
         parent::Create();
 
-
-        ############################## Zufällige Zahl an Instanznamen anhängen für die bessere Unterscheidung
-
-        
-        ############################# Erstellen von zusätzlichen Übergordneten Kategorien /Instanzen
-
-
-        ############################# Erstellen von neuen Variablenprofilen
-
-
         ############################## Registrieren der Eigenschaften aus dem Konfigurationsformular (form.json)
         $this->RegisterPropertyInteger("prop_position", 0);
         $this->RegisterPropertyInteger("prop_lamelle", 0);
         $this->RegisterPropertyInteger("prop_helligkeit", 0);
         $this->RegisterPropertyInteger("prop_temperatur", 0);
         $this->RegisterPropertyInteger("prop_wochenplan", 0);
-        $this->RegisterPropertyInteger("prop_wochenplan_grenzwert_helligkeit_runterfahren", 0);
-        $this->RegisterPropertyInteger("prop_wochenplan_grenzwert_helligkeit_hochfahren", 0);
-        $this->RegisterPropertyInteger("prop_automatik_grenzwert_temperatur", 0);
-        $this->RegisterPropertyInteger("prop_automatik_grenzwert_helligkeit", 0);
         $this->RegisterPropertyInteger("prop_automatik_debounce_min", 10);
         $this->RegisterPropertyBoolean("prop_wochenplan_helligkeit", 0);
         $this->RegisterPropertyInteger("prop_azimut_preset", 0);
@@ -38,8 +24,8 @@ class Aktor extends IPSModule {
         $this->RegisterPropertyBoolean("prop_wochenplan_helligkeit_einstellungen", false);
         $this->RegisterPropertyBoolean('prop_rollo_offen_lamellen_position', false);
         $this->RegisterPropertyBoolean('prop_rollo_geschlossen_lamellen_position', false);
-        $this->RegisterPropertyBoolean('prop_level_beschattung_anzeigen', true);
-        $this->RegisterPropertyBoolean('prop_level_geschlossen_anzeigen', true);
+        $this->RegisterPropertyBoolean('prop_level_beschattung_anzeigen', false);
+        $this->RegisterPropertyBoolean('prop_level_geschlossen_anzeigen', false);
 
         //Automatikmodus
         $this->RegisterPropertyBoolean("prop_automatikmodus_runterfahren_helligkeit", false);
@@ -56,7 +42,7 @@ class Aktor extends IPSModule {
         // 0 = Nie sperren
         // 1 = Benutzerdefiniert (prop_sperrzeit)
         // 2 = Bis Tagesende deaktivieren
-        $this->RegisterPropertyInteger('prop_automatik_nach_manuell_aktion', 1);
+        $this->RegisterPropertyInteger('prop_automatik_nach_manuell_aktion', 2);
 
 
         
@@ -137,8 +123,51 @@ class Aktor extends IPSModule {
         $this->EnableAction("set_level_closed");
 
         ############################## Vorbelegen der Variablen mit Werten
-        SetValue($this->GetIDForIdent("set_level_shading"), 50);   // Setzt den Startwert auf 100
-        SetValue($this->GetIDForIdent("set_level_closed"), 100);    // Setzt den Startwert auf 50
+        SetValue($this->GetIDForIdent("set_level_shading"), 50);
+        SetValue($this->GetIDForIdent("set_level_closed"), 100);
+
+        $this->RegisterVariableInteger("set_light_level_up", "Wochenplan: Helligkeit hoch", [
+            "PRESENTATION" => VARIABLE_PRESENTATION_SLIDER,
+            "ICON" => "brightness",
+            "SUFFIX" => " Lux",
+            'MIN' => 0,
+            'MAX' => 1000,
+            "STEP_SIZE" => 1
+        ], 13);
+        $this->RegisterVariableInteger("set_light_level_down", "Wochenplan: Helligkeit runter", [
+            "PRESENTATION" => VARIABLE_PRESENTATION_SLIDER,
+            "ICON" => "brightness",
+            "SUFFIX" => " Lux",
+            'MIN' => 0,
+            'MAX' => 1000,
+            "STEP_SIZE" => 1
+        ], 14);
+        $this->RegisterVariableInteger("set_auto_temp_threshold", "Automatik: Temperatur", [
+            "PRESENTATION" => VARIABLE_PRESENTATION_SLIDER,
+            "ICON" => "arrows-rotate",
+            "SUFFIX" => " °C",
+            'MIN' => 0,
+            'MAX' => 35,
+            "STEP_SIZE" => 1
+        ], 15);
+        $this->RegisterVariableInteger("set_auto_light_threshold", "Automatik: Helligkeit", [
+            "PRESENTATION" => VARIABLE_PRESENTATION_SLIDER,
+            "ICON" => "arrows-rotate",
+            "SUFFIX" => " Lux",
+            'MIN' => 0,
+            'MAX' => 10000,
+            "STEP_SIZE" => 100
+        ], 16);
+
+        $this->EnableAction("set_light_level_up");
+        $this->EnableAction("set_light_level_down");
+        $this->EnableAction("set_auto_temp_threshold");
+        $this->EnableAction("set_auto_light_threshold");
+
+        SetValue($this->GetIDForIdent('set_light_level_up'),     300);
+        SetValue($this->GetIDForIdent('set_light_level_down'),   100);
+        SetValue($this->GetIDForIdent('set_auto_temp_threshold'), 25);
+        SetValue($this->GetIDForIdent('set_auto_light_threshold'), 5000);
 
         ############################## (Timer entfernt – ereignisgesteuerte Automatik)
 
@@ -159,76 +188,6 @@ class Aktor extends IPSModule {
         }
         if ($closedVarId !== false) {
             IPS_SetHidden($closedVarId, !$showLevelClosed);
-        }
-
-        $changed = false;
-
-        // Automatik: Bedingung aktiv, aber Sensor fehlt -> Bedingung(en) automatisch deaktivieren
-        $hid = $this->ReadPropertyInteger('prop_helligkeit');
-        if (!IPS_VariableExists($hid)) {
-            if ($this->ReadPropertyBoolean('prop_automatikmodus_runterfahren_helligkeit')) {
-                IPS_SetProperty($this->InstanceID, 'prop_automatikmodus_runterfahren_helligkeit', false);
-                $changed = true;
-            }
-            if ($this->ReadPropertyBoolean('prop_automatikmodus_hochfahren_helligkeit')) {
-                IPS_SetProperty($this->InstanceID, 'prop_automatikmodus_hochfahren_helligkeit', false);
-                $changed = true;
-            }
-            if ($changed) {
-                $this->LogMessage("Beschattung: Automatik: 'Helligkeit beachten' deaktiviert, da kein gueltiger Helligkeitssensor ausgewaehlt ist.", KL_MESSAGE);
-            }
-        }
-
-        $tid = $this->ReadPropertyInteger('prop_temperatur');
-        if (!IPS_VariableExists($tid)) {
-            $changedTemp = false;
-            if ($this->ReadPropertyBoolean('prop_automatikmodus_runterfahren_temperatur')) {
-                IPS_SetProperty($this->InstanceID, 'prop_automatikmodus_runterfahren_temperatur', false);
-                $changed = true;
-                $changedTemp = true;
-            }
-            if ($this->ReadPropertyBoolean('prop_automatikmodus_hochfahren_temperatur')) {
-                IPS_SetProperty($this->InstanceID, 'prop_automatikmodus_hochfahren_temperatur', false);
-                $changed = true;
-                $changedTemp = true;
-            }
-            if ($changedTemp) {
-                $this->LogMessage("Beschattung: Automatik: 'Temperatur beachten' deaktiviert, da kein gueltiger Temperatursensor ausgewaehlt ist.", KL_MESSAGE);
-            }
-        }
-
-        $aid = $this->ReadPropertyInteger('prop_azimut');
-        if (!IPS_VariableExists($aid)) {
-            $changedAz = false;
-            if ($this->ReadPropertyBoolean('prop_automatikmodus_runterfahren_azimut')) {
-                IPS_SetProperty($this->InstanceID, 'prop_automatikmodus_runterfahren_azimut', false);
-                $changed = true;
-                $changedAz = true;
-            }
-            if ($this->ReadPropertyBoolean('prop_automatikmodus_hochfahren_azimut')) {
-                IPS_SetProperty($this->InstanceID, 'prop_automatikmodus_hochfahren_azimut', false);
-                $changed = true;
-                $changedAz = true;
-            }
-            if ($changedAz) {
-                $this->LogMessage("Beschattung: Automatik: 'Azimut beachten' deaktiviert, da keine gueltige Azimut-Variable ausgewaehlt ist.", KL_MESSAGE);
-            }
-        }
-
-        if ($changed) {
-            IPS_ApplyChanges($this->InstanceID);
-            return;
-        }
-
-        if ($this->ReadPropertyBoolean('prop_wochenplan_helligkeit')) {
-            $hid = $this->ReadPropertyInteger('prop_helligkeit');
-            if (!IPS_VariableExists($hid)) {
-                $this->LogMessage("Beschattung: Wochenplan: 'Helligkeit beachten' ist aktiv, aber es ist kein gültiger Helligkeitssensor ausgewählt. Option wird deaktiviert.", KL_MESSAGE);
-                IPS_SetProperty($this->InstanceID, 'prop_wochenplan_helligkeit', false);
-                IPS_SetProperty($this->InstanceID, 'prop_wochenplan_helligkeit_einstellungen', false);
-                IPS_ApplyChanges($this->InstanceID);
-                return;
-            }
         }
 
         ############################## Cleanup: Wochenplan-Helligkeits-Check deaktivieren, falls Checkbox deaktiviert ist
@@ -255,35 +214,6 @@ class Aktor extends IPSModule {
         if ($actual_weekly_schedule !== $former_weekly_schedule ) {
             $this->WeeklySchedule_CreateUpdateDelete($actual_weekly_schedule);
             $this->WriteAttributeInteger("attr_former_weekly_schedule", $actual_weekly_schedule);
-        }
-
-        ############################## Übernahme der Werte aus der Azimut Vorauswahl
-        $preset = $this->ReadPropertyInteger("prop_azimut_preset");
-
-        $azimutMin = null;
-        $azimutMax = null;
-
-        switch ($preset) {
-            case 1:  $azimutMin = 135; $azimutMax = 225; break; // Süd
-            case 2:  $azimutMin = 100; $azimutMax = 160; break; // Süd-Ost
-            case 3:  $azimutMin = 200; $azimutMax = 260; break; // Süd-West
-            case 4:  $azimutMin =  60; $azimutMax = 120; break; // Ost
-            case 5:  $azimutMin = 240; $azimutMax = 300; break; // West
-            case 6:  $azimutMin =  330; $azimutMax = 30; break; // Nord
-            case 7:  $azimutMin =  45; $azimutMax =  90; break; // Nor-Ost
-            case 8:  $azimutMin = 270; $azimutMax = 315; break; // Nord-West
-        }
-
-        if (!is_null($azimutMin) && !is_null($azimutMax)) {
-            $currentMin = $this->ReadPropertyInteger("prop_azimut_min");
-            $currentMax = $this->ReadPropertyInteger("prop_azimut_max");
-
-            if ($currentMin !== $azimutMin  || $currentMax !== $azimutMax) {
-                IPS_SetProperty($this->InstanceID, "prop_azimut_min", $azimutMin );
-                IPS_SetProperty($this->InstanceID, "prop_azimut_max", $azimutMax);
-                IPS_ApplyChanges($this->InstanceID);
-                return; // Schleife verhindern
-            }
         }
 
         // Registrierung für manuelle Änderungen an Aktorposition oder Lamellen
@@ -317,6 +247,7 @@ class Aktor extends IPSModule {
         ############################## Darstellung der Modusauswahl abhängig von Automatik-Property
         $automatikAktiv = $this->ReadPropertyBoolean("prop_automatikmodus_aktivieren");
         $lastAutomatik = $this->ReadAttributeBoolean("attr_last_automatik_aktiv");
+        $wochenplanAktiv = $this->ReadPropertyInteger("prop_wochenplan") > 0;
 
         // Nur wenn sich der Zustand geändert hat, neu erstellen
         if ($this->GetIDForIdent('select_modus') !== false) {
@@ -329,15 +260,18 @@ class Aktor extends IPSModule {
                     'IconActive' => true,
                     'IconValue' => 'hand',
                     'Color' => 52651
-                ],
-                [
+                ]
+            ];
+
+            if ($wochenplanAktiv) {
+                $options[] = [
                     'Value' => 1,
                     'Caption' => 'Wochenplan',
                     'IconActive' => true,
                     'IconValue' => 'calendar-week',
                     'Color' => 52651
-                ]
-            ];
+                ];
+            }
 
             if ($automatikAktiv) {
                 $options[] = [
@@ -355,49 +289,21 @@ class Aktor extends IPSModule {
                 'OPTIONS' => json_encode($options)
             ], 8);
 
+            // Modus zurücksetzen wenn Wochenplan deaktiviert aber Modus noch auf Wochenplan steht
+            $modusId = $this->GetIDForIdent('select_modus');
+            if (!$wochenplanAktiv && GetValue($modusId) === 1) {
+                SetValue($modusId, 0);
+                $this->Shutter_ModusSelect(0);
+            }
+
             // Zustand merken
             $this->WriteAttributeBoolean("attr_last_automatik_aktiv", $automatikAktiv);
         }
 
-        ############################## Helligkeitsgrenzwerte-Variablen bedingt erstellen oder löschen
+        ############################## Helligkeitsgrenzwerte-Variablen: WebFront-Sichtbarkeit steuern
         $enableLightLevelSettings = $this->ReadPropertyBoolean("prop_wochenplan_helligkeit_einstellungen");
-
-        if ($enableLightLevelSettings) {
-            $this->RegisterVariableInteger("set_light_level_up", "Wochenplan: Helligkeit hoch", [
-                "PRESENTATION" => VARIABLE_PRESENTATION_SLIDER,
-                "ICON" => "brightness",
-                "SUFFIX" => " Lux",
-                'MIN' => 0,
-                'MAX' => 1000,
-                "STEP_SIZE" => 1
-            ], 13);
-
-            $this->RegisterVariableInteger("set_light_level_down", "Wochenplan: Helligkeit runter", [
-                "PRESENTATION" => VARIABLE_PRESENTATION_SLIDER,
-                "ICON" => "brightness",
-                "SUFFIX" => " Lux",
-                'MIN' => 0,
-                'MAX' => 1000,
-                "STEP_SIZE" => 1
-            ], 14);
-
-            $this->EnableAction("set_light_level_up");
-            $this->EnableAction("set_light_level_down");
-
-            // Werte aus Properties übernehmen (in zwei Schritten für eine minimale Verzögerung)
-            $upID = $this->GetIDForIdent('set_light_level_up');
-            $downID = $this->GetIDForIdent('set_light_level_down');
-
-            SetValue($upID, $this->ReadPropertyInteger('prop_wochenplan_grenzwert_helligkeit_hochfahren'));
-            SetValue($downID, $this->ReadPropertyInteger('prop_wochenplan_grenzwert_helligkeit_runterfahren'));
-        } else {
-            if (@$this->GetIDForIdent("set_light_level_up")) {
-                $this->UnregisterVariable("set_light_level_up");
-            }
-            if (@$this->GetIDForIdent("set_light_level_down")) {
-                $this->UnregisterVariable("set_light_level_down");
-            }
-        }
+        IPS_SetHidden($this->GetIDForIdent('set_light_level_up'),   !$enableLightLevelSettings);
+        IPS_SetHidden($this->GetIDForIdent('set_light_level_down'), !$enableLightLevelSettings);
 
         // --- Alten WeeklySchedule-Timer (falls vorhanden) löschen ---
         $timerIdent = 'WeeklyScheduleTimer';
@@ -437,41 +343,79 @@ class Aktor extends IPSModule {
 
         // Backwards‑Compatibility: fehlende Attribute nachregistrieren
 
+        ############################## Automatik-Grenzwert-Variablen: WebFront-Sichtbarkeit steuern
         $automatikAktiv = $this->ReadPropertyBoolean("prop_automatikmodus_aktivieren");
-        $showAutoTempThreshold = $automatikAktiv && $this->ReadPropertyBoolean("prop_automatik_grenzwerte_temperatur_anzeigen");
+        $showAutoTempThreshold  = $automatikAktiv && $this->ReadPropertyBoolean("prop_automatik_grenzwerte_temperatur_anzeigen");
         $showAutoLightThreshold = $automatikAktiv && $this->ReadPropertyBoolean("prop_automatik_grenzwerte_helligkeit_anzeigen");
+        IPS_SetHidden($this->GetIDForIdent('set_auto_temp_threshold'),  !$showAutoTempThreshold);
+        IPS_SetHidden($this->GetIDForIdent('set_auto_light_threshold'), !$showAutoLightThreshold);
+    }
 
-        if ($showAutoTempThreshold) {
-            $this->RegisterVariableInteger("set_auto_temp_threshold", "Automatik: Temperatur", [
-                "PRESENTATION" => VARIABLE_PRESENTATION_SLIDER,
-                "ICON" => "arrows-rotate",
-                "SUFFIX" => " °C",
-                'MIN' => 0,
-                'MAX' => 35,
-                "STEP_SIZE" => 1
-            ], 15);
-            $this->EnableAction("set_auto_temp_threshold");
-            SetValue($this->GetIDForIdent("set_auto_temp_threshold"), $this->ReadPropertyInteger('prop_automatik_grenzwert_temperatur'));
-        } else {
-            if (@$this->GetIDForIdent("set_auto_temp_threshold")) {
-                $this->UnregisterVariable("set_auto_temp_threshold");
-            }
+    public function GetConfigurationForm(): string
+    {
+        $form = json_decode(file_get_contents(__DIR__ . '/form.json'), true);
+
+        $hasH = IPS_VariableExists($this->ReadPropertyInteger('prop_helligkeit'));
+        $hasT = IPS_VariableExists($this->ReadPropertyInteger('prop_temperatur'));
+        $hasA = IPS_VariableExists($this->ReadPropertyInteger('prop_azimut'));
+        $hasL = IPS_VariableExists($this->ReadPropertyInteger('prop_lamelle'));
+        $hasP = IPS_VariableExists($this->ReadPropertyInteger('prop_position'));
+
+        if (!$hasP) {
+            $this->disableFormFields($form['elements'], ['prop_level_geschlossen_anzeigen']);
         }
 
-        if ($showAutoLightThreshold) {
-            $this->RegisterVariableInteger("set_auto_light_threshold", "Automatik: Helligkeit", [
-                "PRESENTATION" => VARIABLE_PRESENTATION_SLIDER,
-                "ICON" => "arrows-rotate",
-                "SUFFIX" => " Lux",
-                'MIN' => 0,
-                'MAX' => 10000,
-                "STEP_SIZE" => 100
-            ], 16);
-            $this->EnableAction("set_auto_light_threshold");
-            SetValue($this->GetIDForIdent("set_auto_light_threshold"), $this->ReadPropertyInteger('prop_automatik_grenzwert_helligkeit'));
-        } else {
-            if (@$this->GetIDForIdent("set_auto_light_threshold")) {
-                $this->UnregisterVariable("set_auto_light_threshold");
+        if (!$hasL) {
+            $this->disableFormFields($form['elements'], [
+                'prop_rollo_offen_lamellen_position',
+                'prop_rollo_geschlossen_lamellen_position',
+            ]);
+        }
+
+        if (!$hasH) {
+            $this->disableFormFields($form['elements'], [
+                'prop_wochenplan_helligkeit',
+                'prop_wochenplan_helligkeit_einstellungen',
+                'prop_automatikmodus_runterfahren_helligkeit',
+                'prop_automatikmodus_hochfahren_helligkeit',
+            ]);
+        }
+        if (!$hasT) {
+            $this->disableFormFields($form['elements'], [
+                'prop_automatikmodus_runterfahren_temperatur',
+                'prop_automatikmodus_hochfahren_temperatur',
+            ]);
+        }
+        if (!$hasA) {
+            $this->disableFormFields($form['elements'], [
+                'prop_automatikmodus_runterfahren_azimut',
+                'prop_automatikmodus_hochfahren_azimut',
+            ]);
+        }
+
+        if ($this->ReadPropertyInteger('prop_wochenplan') === 0) {
+            $this->disableFormFields($form['elements'], ['prop_automatikmodus_aktivieren']);
+        }
+
+        if (!$this->ReadPropertyBoolean('prop_automatikmodus_aktivieren')) {
+            $this->disableFormFields($form['elements'], [
+                'prop_level_beschattung_anzeigen',
+                'prop_automatik_grenzwerte_temperatur_anzeigen',
+                'prop_automatik_grenzwerte_helligkeit_anzeigen',
+            ]);
+        }
+
+        return json_encode($form);
+    }
+
+    private function disableFormFields(array &$elements, array $names): void
+    {
+        foreach ($elements as &$element) {
+            if (isset($element['name']) && in_array($element['name'], $names)) {
+                $element['enabled'] = false;
+            }
+            if (isset($element['items']) && is_array($element['items'])) {
+                $this->disableFormFields($element['items'], $names);
             }
         }
     }
@@ -768,7 +712,7 @@ class Aktor extends IPSModule {
     $runterfahrenErlaubt = true;
 
     if ($this->ReadPropertyBoolean("prop_automatikmodus_runterfahren_helligkeit") && $checkLux) {
-        $luxGrenzeRunter = $this->ReadPropertyInteger("prop_automatik_grenzwert_helligkeit");
+        $luxGrenzeRunter = $this->getThreshold('set_auto_light_threshold');
         if ($lux < $luxGrenzeRunter) {
             $this->LogMessage("Beschattung: [Startbedingung Runterfahren] Helligkeit: $lux lx < $luxGrenzeRunter lx -> JA.", KL_MESSAGE);
         } else {
@@ -778,7 +722,7 @@ class Aktor extends IPSModule {
     }
 
     if ($this->ReadPropertyBoolean("prop_automatikmodus_runterfahren_temperatur") && $checkTemp) {
-        $tempGrenze = $this->ReadPropertyInteger("prop_automatik_grenzwert_temperatur");
+        $tempGrenze = $this->getThreshold('set_auto_temp_threshold');
         if ($temp >= $tempGrenze) {
             $this->LogMessage("Beschattung: [Startbedingung Runterfahren] Temperatur: $temp >= $tempGrenze -> JA.", KL_MESSAGE);
         } else {
@@ -831,7 +775,7 @@ class Aktor extends IPSModule {
     $hochfahren = false;
 
     if ($this->ReadPropertyBoolean("prop_automatikmodus_hochfahren_helligkeit") && isset($lux)) {
-        $grenze = $this->ReadPropertyInteger("prop_automatik_grenzwert_helligkeit");
+        $grenze = $this->getThreshold('set_auto_light_threshold');
         if ($lux < $grenze) {
             $hochfahren = true;
             $this->LogMessage("Beschattung: [Endbedingung Hochfahren] Helligkeit: $lux lx < {$grenze} lx -> JA.", KL_MESSAGE);
@@ -839,7 +783,7 @@ class Aktor extends IPSModule {
     }
 
     if ($this->ReadPropertyBoolean("prop_automatikmodus_hochfahren_temperatur") && isset($temp)) {
-        $grenze = $this->ReadPropertyInteger("prop_automatik_grenzwert_temperatur");
+        $grenze = $this->getThreshold('set_auto_temp_threshold');
         if ($temp < $grenze) {
             $hochfahren = true;
             $this->LogMessage("Beschattung: [Endbedingung Hochfahren] Temperatur: $temp < {$grenze} -> JA.", KL_MESSAGE);
@@ -896,6 +840,101 @@ class Aktor extends IPSModule {
     }
     
 
+    public function PositionChanged(int $positionID): void
+    {
+        $hatPosition = IPS_VariableExists($positionID);
+        $this->UpdateFormField('prop_level_geschlossen_anzeigen', 'enabled', $hatPosition);
+        if (!$hatPosition) {
+            $this->UpdateFormField('prop_level_geschlossen_anzeigen', 'value', false);
+        }
+    }
+
+    public function LamelleChanged(int $lamelleID): void
+    {
+        $hatLamelle = IPS_VariableExists($lamelleID);
+        $this->UpdateFormField('prop_rollo_offen_lamellen_position',      'enabled', $hatLamelle);
+        $this->UpdateFormField('prop_rollo_geschlossen_lamellen_position', 'enabled', $hatLamelle);
+        if (!$hatLamelle) {
+            $this->UpdateFormField('prop_rollo_offen_lamellen_position',      'value', false);
+            $this->UpdateFormField('prop_rollo_geschlossen_lamellen_position', 'value', false);
+        }
+    }
+
+    public function WochenplanChanged(int $wochenplan): void
+    {
+        $hatWochenplan = $wochenplan > 0;
+        $this->UpdateFormField('prop_automatikmodus_aktivieren', 'enabled', $hatWochenplan);
+        if (!$hatWochenplan) {
+            $this->UpdateFormField('prop_automatikmodus_aktivieren', 'value', false);
+            $this->AutomatikModusChanged(false);
+        }
+    }
+
+    public function AutomatikModusChanged(bool $aktiv): void
+    {
+        $this->UpdateFormField('prop_level_beschattung_anzeigen',               'enabled', $aktiv);
+        $this->UpdateFormField('prop_automatik_grenzwerte_temperatur_anzeigen', 'enabled', $aktiv);
+        $this->UpdateFormField('prop_automatik_grenzwerte_helligkeit_anzeigen', 'enabled', $aktiv);
+        if (!$aktiv) {
+            $this->UpdateFormField('prop_level_beschattung_anzeigen',               'value', false);
+            $this->UpdateFormField('prop_automatik_grenzwerte_temperatur_anzeigen', 'value', false);
+            $this->UpdateFormField('prop_automatik_grenzwerte_helligkeit_anzeigen', 'value', false);
+        }
+    }
+
+    public function SensorChanged(int $helligkeitID, int $temperaturID, int $azimutID): void
+    {
+        $hasH = IPS_VariableExists($helligkeitID);
+        $hasT = IPS_VariableExists($temperaturID);
+        $hasA = IPS_VariableExists($azimutID);
+
+        $this->UpdateFormField('prop_automatikmodus_runterfahren_helligkeit', 'enabled', $hasH);
+        $this->UpdateFormField('prop_automatikmodus_hochfahren_helligkeit',   'enabled', $hasH);
+        $this->UpdateFormField('prop_wochenplan_helligkeit',                  'enabled', $hasH);
+        $this->UpdateFormField('prop_wochenplan_helligkeit_einstellungen', 'enabled', $hasH);
+        if (!$hasH) {
+            $this->UpdateFormField('prop_automatikmodus_runterfahren_helligkeit', 'value', false);
+            $this->UpdateFormField('prop_automatikmodus_hochfahren_helligkeit',   'value', false);
+            $this->UpdateFormField('prop_wochenplan_helligkeit',                  'value', false);
+            $this->UpdateFormField('prop_wochenplan_helligkeit_einstellungen',    'value', false);
+        }
+
+        $this->UpdateFormField('prop_automatikmodus_runterfahren_temperatur', 'enabled', $hasT);
+        $this->UpdateFormField('prop_automatikmodus_hochfahren_temperatur',   'enabled', $hasT);
+        if (!$hasT) {
+            $this->UpdateFormField('prop_automatikmodus_runterfahren_temperatur', 'value', false);
+            $this->UpdateFormField('prop_automatikmodus_hochfahren_temperatur',   'value', false);
+        }
+
+        $this->UpdateFormField('prop_automatikmodus_runterfahren_azimut', 'enabled', $hasA);
+        $this->UpdateFormField('prop_automatikmodus_hochfahren_azimut',   'enabled', $hasA);
+        if (!$hasA) {
+            $this->UpdateFormField('prop_automatikmodus_runterfahren_azimut', 'value', false);
+            $this->UpdateFormField('prop_automatikmodus_hochfahren_azimut',   'value', false);
+        }
+    }
+
+    public function PresetChanged(int $preset): void
+    {
+        $map = [
+            1 => [135, 225],
+            2 => [100, 160],
+            3 => [200, 260],
+            4 => [60,  120],
+            5 => [240, 300],
+            6 => [330,  30],
+            7 => [45,   90],
+            8 => [270, 315],
+        ];
+        if (isset($map[$preset])) {
+            $this->UpdateFormField('prop_azimut_min', 'value', $map[$preset][0]);
+            $this->UpdateFormField('prop_azimut_max', 'value', $map[$preset][1]);
+        } else {
+            $this->UpdateFormField('prop_azimut_min', 'value', 0);
+            $this->UpdateFormField('prop_azimut_max', 'value', 0);
+        }
+    }
+
     public function Beschattung_Wochenplan(int $id, int $actionID) {
         $this->LogMessage("Beschattung: Wochenplan: Aktion $actionID wurde ausgeloest", KL_MESSAGE);
     
@@ -924,7 +963,7 @@ class Aktor extends IPSModule {
 
             if ($actionID == 0) {
                 // --- Öffnen: blockieren, wenn zu dunkel ---
-                $threshold = $this->ReadPropertyInteger("prop_wochenplan_grenzwert_helligkeit_hochfahren");
+                $threshold = $this->getThreshold('set_light_level_up');
                 if ($lux < $threshold) {
                     $this->LogMessage("Beschattung: [Wochenplan] Hochfahren blockiert - Lux={$lux} < {$threshold}", KL_MESSAGE);
                     // Nachprüfung aktivieren
@@ -939,7 +978,7 @@ class Aktor extends IPSModule {
             }
             else {
                 // --- Schließen: blockieren, wenn zu dunkel ---
-                $threshold = $this->ReadPropertyInteger("prop_wochenplan_grenzwert_helligkeit_runterfahren");
+                $threshold = $this->getThreshold('set_light_level_down');
                 if ($lux > $threshold) {
                     $this->LogMessage("Beschattung: [Wochenplan] Runterfahren blockiert - Lux={$lux} > {$threshold}", KL_MESSAGE);
                     // Nachprüfung aktivieren
@@ -976,14 +1015,10 @@ class Aktor extends IPSModule {
 
                 case "set_light_level_up":
                     SetValue($this->GetIDForIdent("set_light_level_up"), $Value);
-                    IPS_SetProperty($this->InstanceID, 'prop_wochenplan_grenzwert_helligkeit_hochfahren', $Value);
-                    IPS_ApplyChanges($this->InstanceID); // <-- WICHTIG
                     break;
-                
+
                 case "set_light_level_down":
                     SetValue($this->GetIDForIdent("set_light_level_down"), $Value);
-                    IPS_SetProperty($this->InstanceID, 'prop_wochenplan_grenzwert_helligkeit_runterfahren', $Value);
-                    IPS_ApplyChanges($this->InstanceID); // <-- WICHTIG
                     break;
 
             case "set_level_shading":
@@ -996,14 +1031,10 @@ class Aktor extends IPSModule {
             
             case "set_auto_temp_threshold":
                 SetValue($this->GetIDForIdent("set_auto_temp_threshold"), $Value);
-                IPS_SetProperty($this->InstanceID, 'prop_automatik_grenzwert_temperatur', $Value);
-                IPS_ApplyChanges($this->InstanceID);
                 break;
 
             case "set_auto_light_threshold":
                 SetValue($this->GetIDForIdent("set_auto_light_threshold"), $Value);
-                IPS_SetProperty($this->InstanceID, 'prop_automatik_grenzwert_helligkeit', $Value);
-                IPS_ApplyChanges($this->InstanceID);
                 break;
             
             case "weekly_schedule":
@@ -1111,7 +1142,7 @@ class Aktor extends IPSModule {
     
                 // --- Öffnen nachprüfen ---
                 if ($this->ReadAttributeBoolean('PendingOpen')) {
-                    $thr = $this->ReadPropertyInteger('prop_wochenplan_grenzwert_helligkeit_hochfahren');
+                    $thr = $this->getThreshold('set_light_level_up');
                     if ($lux > $thr) {
                         $this->DrivePositionWithLamellaAfterArrival(0);
                         $this->LogMessage("Nachgepruefte Oeffnung bei Lux={$lux} > {$thr}", KL_MESSAGE);
@@ -1124,7 +1155,7 @@ class Aktor extends IPSModule {
     
                 // --- Schließen nachprüfen ---
                 if ($this->ReadAttributeBoolean('PendingClose')) {
-                    $thr = $this->ReadPropertyInteger('prop_wochenplan_grenzwert_helligkeit_runterfahren');
+                    $thr = $this->getThreshold('set_light_level_down');
                     if ($lux < $thr) {
                         $this->DrivePositionWithLamellaAfterArrival(100);
                         $this->LogMessage("Nachgeprueftes Schliessen bei Lux={$lux} < {$thr}", KL_MESSAGE);
@@ -1164,6 +1195,11 @@ class Aktor extends IPSModule {
     }
 
 
+
+    private function getThreshold(string $ident): int
+    {
+        return (int) GetValue($this->GetIDForIdent($ident));
+    }
 
     private function DrivePositionWithLamellaAfterArrival(int $ziel): void
     {
