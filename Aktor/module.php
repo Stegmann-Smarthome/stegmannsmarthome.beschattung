@@ -310,7 +310,7 @@ class Aktor extends IPSModule {
         $timerID = @IPS_GetObjectIDByIdent($timerIdent, $this->InstanceID);
         if ($timerID !== false && IPS_EventExists($timerID)) {
             IPS_DeleteEvent($timerID);
-            $this->LogMessage("Beschattung: WeeklyScheduleTimer (ID $timerID) gelöscht.", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "WeeklyScheduleTimer (ID $timerID) gelöscht.", KL_MESSAGE);
         }
 
         // Not released
@@ -338,7 +338,7 @@ class Aktor extends IPSModule {
         $timerID = @IPS_GetObjectIDByIdent('LamellenRueckhub', $this->InstanceID);
         if ($timerID !== false && IPS_EventExists($timerID)) {
             IPS_DeleteEvent($timerID);
-            $this->LogMessage("Beschattung: Alten LamellenRueckhub-Timer (ID $timerID) gelöscht.", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "Alten LamellenRueckhub-Timer (ID $timerID) gelöscht.", KL_MESSAGE);
         }
 
         // Backwards‑Compatibility: fehlende Attribute nachregistrieren
@@ -465,7 +465,7 @@ class Aktor extends IPSModule {
         if ($existingPlanID > 0 && IPS_EventExists($existingPlanID)) {
             IPS_DeleteEvent($existingPlanID);
             $this->WriteAttributeInteger("attr_HeatingPlanID", 0);
-            $this->LogMessage("Beschattung: Alter Wochenplan (ID {$existingPlanID}) gelöscht.", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "Alter Wochenplan (ID {$existingPlanID}) gelöscht.", KL_MESSAGE);
         }
 
         // 2. Wenn Wert = 0, dann gar keinen neuen Plan anlegen
@@ -546,7 +546,7 @@ class Aktor extends IPSModule {
         $this->RegisterMessage($heatingPlan, EM_CHANGESCHEDULEGROUPPOINT);
         $this->RegisterMessage($heatingPlan, EM_CHANGESCHEDULEACTION);
 
-        $this->LogMessage("Beschattung: Neuer Wochenplan angelegt (ID {$heatingPlan}).", KL_MESSAGE);
+        $this->LogMessage($this->logPrefix() . "Neuer Wochenplan angelegt (ID {$heatingPlan}).", KL_MESSAGE);
     }
 
     // Prüft ob die erste oder letzte Aktion des Wochenplans aktiv ist
@@ -620,7 +620,7 @@ class Aktor extends IPSModule {
 
         switch ($modus) {
             case 0: // Manuell
-                $this->LogMessage("Beschattung: Modus = Manuell -> keine Automatik aktiv", KL_MESSAGE);
+                $this->LogMessage($this->logPrefix() . "Modus = Manuell -> keine Automatik aktiv", KL_MESSAGE);
                 if ($planID > 0 && IPS_EventExists($planID)) {
                     IPS_SetEventActive($planID, false);     // Event abschalten
                     IPS_SetDisabled($planID, true);         // Objekt deaktivieren
@@ -629,7 +629,7 @@ class Aktor extends IPSModule {
                 break;
 
             case 1: // Wochenplan
-                $this->LogMessage("Beschattung: Modus = Wochenplan -> Zeitsteuerung aktiv", KL_MESSAGE);
+                $this->LogMessage($this->logPrefix() . "Modus = Wochenplan -> Zeitsteuerung aktiv", KL_MESSAGE);
                 if ($planID > 0 && IPS_EventExists($planID)) {
                     IPS_SetEventActive($planID, true);
                     IPS_SetDisabled($planID, false);
@@ -638,7 +638,7 @@ class Aktor extends IPSModule {
                 break;
 
             case 2: // Automatik
-                $this->LogMessage("Beschattung: Modus = Automatik -> Sensorsteuerung aktiv", KL_MESSAGE);
+                $this->LogMessage($this->logPrefix() . "Modus = Automatik -> Sensorsteuerung aktiv", KL_MESSAGE);
                 if ($planID > 0 && IPS_EventExists($planID)) {
                     IPS_SetEventActive($planID, true);
                     IPS_SetDisabled($planID, false);
@@ -647,21 +647,27 @@ class Aktor extends IPSModule {
                 break;
 
             default:
-                $this->LogMessage("Beschattung: Unbekannter Modus: $modus", KL_MESSAGE);
+                $this->LogMessage($this->logPrefix() . "Unbekannter Modus: $modus", KL_MESSAGE);
                 break;
         }
     }
 
     public function CheckAutoShading()
     {
-        $this->LogMessage("Beschattung: Automatikpruefung manuell ausgelöst.", KL_MESSAGE);
+        $this->doCheckAutoShading(true);
+    }
+
+    private function doCheckAutoShading(bool $manuell): void
+    {
+        $trigger = $manuell ? "manuell ausgeloest" : "automatisch ausgeloest (Sensorupdate)";
+        $this->LogMessage($this->logPrefix() . "Automatikpruefung {$trigger}.", KL_MESSAGE);
 
         // Automatik ggf. bis Tagesende deaktiviert
         $now = time();
         $automatikAusBis = $this->ReadAttributeInteger("attr_automatik_aus_bis");
         if ($automatikAusBis > $now) {
             $rest = $automatikAusBis - $now;
-            $this->LogMessage("Beschattung: [Automatikpruefung] Abbruch - Automatik bis Tagesende deaktiviert (noch {$rest} Sek.).", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "[Automatikpruefung] Abbruch - Automatik bis Tagesende deaktiviert (noch {$rest} Sek.).", KL_MESSAGE);
             return;
         }
 
@@ -669,13 +675,13 @@ class Aktor extends IPSModule {
         $sperreBis = $this->ReadAttributeInteger("attr_sperre_bis");
         if ($sperreBis > $now) {
             $rest = $sperreBis - $now;
-            $this->LogMessage("Beschattung: [Automatikpruefung] Abbruch - gesperrt fuer weitere {$rest} Sek.", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "[Automatikpruefung] Abbruch - gesperrt fuer weitere {$rest} Sek.", KL_MESSAGE);
             return;
         }
     
         // Wochenplan prüfen
         if (!$this->IsAutomatikErlaubt()) {
-            $this->LogMessage("Beschattung: [Automatikpruefung] Abbruch - Wochenplan steht nicht auf Aktion 0 (Offen).", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "[Automatikpruefung] Abbruch - Wochenplan steht nicht auf Aktion 0 (Offen).", KL_MESSAGE);
             return;
         }
 
@@ -705,7 +711,7 @@ class Aktor extends IPSModule {
         $this->ReadPropertyBoolean("prop_automatikmodus_runterfahren_temperatur") ||
         $this->ReadPropertyBoolean("prop_automatikmodus_runterfahren_azimut");
     if (!$hasStartCondition) {
-        $this->LogMessage("Beschattung: [Automatikpruefung] Abbruch - Keine Start-Bedingung aktiv (Helligkeit/Temperatur/Azimut).", KL_MESSAGE);
+        $this->LogMessage($this->logPrefix() . "[Automatikpruefung] Abbruch - Keine Start-Bedingung aktiv (Helligkeit/Temperatur/Azimut).", KL_MESSAGE);
         return;
     }
 
@@ -713,10 +719,10 @@ class Aktor extends IPSModule {
 
     if ($this->ReadPropertyBoolean("prop_automatikmodus_runterfahren_helligkeit") && $checkLux) {
         $luxGrenzeRunter = $this->getThreshold('set_auto_light_threshold');
-        if ($lux < $luxGrenzeRunter) {
-            $this->LogMessage("Beschattung: [Startbedingung Runterfahren] Helligkeit: $lux lx < $luxGrenzeRunter lx -> JA.", KL_MESSAGE);
+        if ($lux >= $luxGrenzeRunter) {
+            $this->LogMessage($this->logPrefix() . "[Startbedingung Runterfahren] Helligkeit: $lux lx >= $luxGrenzeRunter lx -> JA.", KL_MESSAGE);
         } else {
-            $this->LogMessage("Beschattung: [Startbedingung Runterfahren] Helligkeit: $lux lx >= $luxGrenzeRunter lx -> NEIN.", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "[Startbedingung Runterfahren] Helligkeit: $lux lx < $luxGrenzeRunter lx -> NEIN.", KL_MESSAGE);
             $runterfahrenErlaubt = false;
         }
     }
@@ -724,9 +730,9 @@ class Aktor extends IPSModule {
     if ($this->ReadPropertyBoolean("prop_automatikmodus_runterfahren_temperatur") && $checkTemp) {
         $tempGrenze = $this->getThreshold('set_auto_temp_threshold');
         if ($temp >= $tempGrenze) {
-            $this->LogMessage("Beschattung: [Startbedingung Runterfahren] Temperatur: $temp >= $tempGrenze -> JA.", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "[Startbedingung Runterfahren] Temperatur: $temp >= $tempGrenze -> JA.", KL_MESSAGE);
         } else {
-            $this->LogMessage("Beschattung: [Startbedingung Runterfahren] Temperatur: $temp < $tempGrenze -> NEIN.", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "[Startbedingung Runterfahren] Temperatur: $temp < $tempGrenze -> NEIN.", KL_MESSAGE);
             $runterfahrenErlaubt = false;
         }
     }
@@ -740,9 +746,9 @@ class Aktor extends IPSModule {
             : ($azimut >= $azimutMin && $azimut <= $azimutMax);
 
         if ($inBereich) {
-            $this->LogMessage("Beschattung: [Startbedingung Runterfahren] Azimut: $azimut innerhalb von $azimutMin-$azimutMax -> JA.", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "[Startbedingung Runterfahren] Azimut: $azimut innerhalb von $azimutMin-$azimutMax -> JA.", KL_MESSAGE);
         } else {
-            $this->LogMessage("Beschattung: [Startbedingung Runterfahren] Azimut: $azimut ausserhalb von $azimutMin-$azimutMax -> NEIN.", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "[Startbedingung Runterfahren] Azimut: $azimut ausserhalb von $azimutMin-$azimutMax -> NEIN.", KL_MESSAGE);
             $runterfahrenErlaubt = false;
         }
     }
@@ -768,7 +774,7 @@ class Aktor extends IPSModule {
         $this->ReadPropertyBoolean("prop_automatikmodus_hochfahren_temperatur") ||
         $this->ReadPropertyBoolean("prop_automatikmodus_hochfahren_azimut");
     if (!$hasEndCondition) {
-        $this->LogMessage("Beschattung: [Automatikpruefung] Abbruch - Keine End-Bedingung aktiv (Helligkeit/Temperatur/Azimut).", KL_MESSAGE);
+        $this->LogMessage($this->logPrefix() . "[Automatikpruefung] Abbruch - Keine End-Bedingung aktiv (Helligkeit/Temperatur/Azimut).", KL_MESSAGE);
         return;
     }
 
@@ -778,7 +784,7 @@ class Aktor extends IPSModule {
         $grenze = $this->getThreshold('set_auto_light_threshold');
         if ($lux < $grenze) {
             $hochfahren = true;
-            $this->LogMessage("Beschattung: [Endbedingung Hochfahren] Helligkeit: $lux lx < {$grenze} lx -> JA.", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "[Endbedingung Hochfahren] Helligkeit: $lux lx < {$grenze} lx -> JA.", KL_MESSAGE);
         }
     }
 
@@ -786,7 +792,7 @@ class Aktor extends IPSModule {
         $grenze = $this->getThreshold('set_auto_temp_threshold');
         if ($temp < $grenze) {
             $hochfahren = true;
-            $this->LogMessage("Beschattung: [Endbedingung Hochfahren] Temperatur: $temp < {$grenze} -> JA.", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "[Endbedingung Hochfahren] Temperatur: $temp < {$grenze} -> JA.", KL_MESSAGE);
         }
     }
 
@@ -796,7 +802,7 @@ class Aktor extends IPSModule {
         $außerhalb = ($min > $max) ? !($azimut >= $min || $azimut <= $max) : !($azimut >= $min && $azimut <= $max);
         if ($außerhalb) {
             $hochfahren = true;
-            $this->LogMessage("Beschattung: [Endbedingung Hochfahren] Azimut: $azimut ausserhalb von $min-$max -> JA.", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "[Endbedingung Hochfahren] Azimut: $azimut ausserhalb von $min-$max -> JA.", KL_MESSAGE);
         }
     }
 
@@ -804,7 +810,7 @@ class Aktor extends IPSModule {
         $this->WriteAttributeInteger('attr_internal_target_position', 0);
         $this->WriteAttributeInteger('attr_internal_request_ts_position', time());
         RequestAction($positionID, 0);
-        $this->LogMessage("Beschattung: [Automatik] Hochgefahren.", KL_MESSAGE);
+        $this->LogMessage($this->logPrefix() . "[Automatik] Hochgefahren.", KL_MESSAGE);
         return;
     }
 
@@ -820,7 +826,7 @@ class Aktor extends IPSModule {
         $positionID = $this->ReadPropertyInteger("prop_position");
     
         if (!IPS_VariableExists($positionID)) {
-            $this->LogMessage("Beschattung: Rueckhub-Ziel konnte nicht ausgefuehrt werden - Aktor fehlt.", KL_ERROR);
+            $this->LogMessage($this->logPrefix() . "Rueckhub-Ziel konnte nicht ausgefuehrt werden - Aktor fehlt.", KL_ERROR);
             return;
         }
     
@@ -828,7 +834,7 @@ class Aktor extends IPSModule {
         $this->WriteAttributeInteger('attr_internal_target_position', (int)$ziel);
         $this->WriteAttributeInteger('attr_internal_request_ts_position', time());
         RequestAction($positionID, $ziel);
-        $this->LogMessage("Beschattung: Lamellen-Rueckhub ausgefuehrt auf {$ziel}%.", KL_MESSAGE);
+        $this->LogMessage($this->logPrefix() . "Lamellen-Rueckhub ausgefuehrt auf {$ziel}%.", KL_MESSAGE);
     }
 
     // Funktion zum Rücksetzen der Speere
@@ -836,7 +842,7 @@ class Aktor extends IPSModule {
     {
         $this->WriteAttributeInteger("attr_sperre_bis", 0);
         $this->WriteAttributeInteger("attr_automatik_aus_bis", 0);
-        $this->LogMessage("Beschattung: Automatik-Sperre manuell zurueckgesetzt.", KL_MESSAGE);
+        $this->LogMessage($this->logPrefix() . "Automatik-Sperre manuell zurueckgesetzt.", KL_MESSAGE);
     }
     
 
@@ -936,7 +942,7 @@ class Aktor extends IPSModule {
     }
 
     public function Beschattung_Wochenplan(int $id, int $actionID) {
-        $this->LogMessage("Beschattung: Wochenplan: Aktion $actionID wurde ausgeloest", KL_MESSAGE);
+        $this->LogMessage($this->logPrefix() . "Wochenplan: Aktion $actionID wurde ausgeloest", KL_MESSAGE);
     
         $positionID = $this->ReadPropertyInteger("prop_position");
         $planID     = $this->ReadAttributeInteger("attr_HeatingPlanID");
@@ -947,7 +953,7 @@ class Aktor extends IPSModule {
 
             $hid = $this->ReadPropertyInteger("prop_helligkeit");
             if (!IPS_VariableExists($hid)) {
-                $this->LogMessage("Beschattung: [Wochenplan] Helligkeitspruefung aktiv, aber Helligkeitssensor ungueltig. Pruefung wird uebersprungen.", KL_MESSAGE);
+                $this->LogMessage($this->logPrefix() . "[Wochenplan] Helligkeitspruefung aktiv, aber Helligkeitssensor ungueltig. Pruefung wird uebersprungen.", KL_MESSAGE);
                 $this->WriteAttributeBoolean('PendingOpen', false);
                 $this->WriteAttributeBoolean('PendingClose', false);
                 $lux = null;
@@ -957,7 +963,7 @@ class Aktor extends IPSModule {
 
             if ($lux === null) {
                 $this->DrivePositionWithLamellaAfterArrival($zielwert);
-                $this->LogMessage("Beschattung: [Wochenplan] Position auf {$zielwert}% gesetzt.", KL_MESSAGE);
+                $this->LogMessage($this->logPrefix() . "[Wochenplan] Position auf {$zielwert}% gesetzt.", KL_MESSAGE);
                 return;
             }
 
@@ -965,7 +971,7 @@ class Aktor extends IPSModule {
                 // --- Öffnen: blockieren, wenn zu dunkel ---
                 $threshold = $this->getThreshold('set_light_level_up');
                 if ($lux < $threshold) {
-                    $this->LogMessage("Beschattung: [Wochenplan] Hochfahren blockiert - Lux={$lux} < {$threshold}", KL_MESSAGE);
+                    $this->LogMessage($this->logPrefix() . "[Wochenplan] Hochfahren blockiert - Lux={$lux} < {$threshold}", KL_MESSAGE);
                     // Nachprüfung aktivieren
                     $this->WriteAttributeBoolean('PendingOpen', true);
                     $hid = $this->ReadPropertyInteger('prop_helligkeit');
@@ -974,13 +980,13 @@ class Aktor extends IPSModule {
                     }
                     return;
                 }
-                $this->LogMessage("Beschattung: [Wochenplan] Hochfahren erlaubt - Lux={$lux} >= {$threshold}", KL_MESSAGE);
+                $this->LogMessage($this->logPrefix() . "[Wochenplan] Hochfahren erlaubt - Lux={$lux} >= {$threshold}", KL_MESSAGE);
             }
             else {
                 // --- Schließen: blockieren, wenn zu dunkel ---
                 $threshold = $this->getThreshold('set_light_level_down');
                 if ($lux > $threshold) {
-                    $this->LogMessage("Beschattung: [Wochenplan] Runterfahren blockiert - Lux={$lux} > {$threshold}", KL_MESSAGE);
+                    $this->LogMessage($this->logPrefix() . "[Wochenplan] Runterfahren blockiert - Lux={$lux} > {$threshold}", KL_MESSAGE);
                     // Nachprüfung aktivieren
                     $this->WriteAttributeBoolean('PendingClose', true);
                     $hid = $this->ReadPropertyInteger('prop_helligkeit');
@@ -989,13 +995,13 @@ class Aktor extends IPSModule {
                     }
                     return;
                 }
-                $this->LogMessage("Beschattung: [Wochenplan] Runterfahren erlaubt - Lux={$lux} >= {$threshold}", KL_MESSAGE);
+                $this->LogMessage($this->logPrefix() . "[Wochenplan] Runterfahren erlaubt - Lux={$lux} >= {$threshold}", KL_MESSAGE);
             }
         }
     
         // Ausführung, wenn nicht blockiert oder Helligkeit nicht geprüft wird
         $this->DrivePositionWithLamellaAfterArrival($zielwert);
-        $this->LogMessage("Beschattung: [Wochenplan] Position auf {$zielwert}% gesetzt.", KL_MESSAGE);
+        $this->LogMessage($this->logPrefix() . "[Wochenplan] Position auf {$zielwert}% gesetzt.", KL_MESSAGE);
     }
     
     
@@ -1066,7 +1072,7 @@ class Aktor extends IPSModule {
                     $last = $this->ReadAttributeInteger('attr_last_auto_check');
                     $debMin = max(0, (int)$this->ReadPropertyInteger('prop_automatik_debounce_min'));
                     if ($now - $last >= ($debMin * 60)) {
-                        $this->CheckAutoShading();
+                        $this->doCheckAutoShading(false);
                         $this->WriteAttributeInteger('attr_last_auto_check', $now);
                     }
                 }
@@ -1104,13 +1110,13 @@ class Aktor extends IPSModule {
                 if ($aktion === 2) {
                     $endOfDay = strtotime('tomorrow 00:00:00') - 1;
                     $this->WriteAttributeInteger('attr_automatik_aus_bis', $endOfDay);
-                    $this->LogMessage("Automatik nach manueller Bedienung bis Tagesende deaktiviert bis " . date("H:i:s", $endOfDay), KL_MESSAGE);
+                    $this->LogMessage($this->logPrefix() . "Automatik nach manueller Bedienung bis Tagesende deaktiviert bis " . date("H:i:s", $endOfDay), KL_MESSAGE);
                 } elseif ($aktion === 1) {
                     $minuten = (int)$this->ReadPropertyInteger('prop_sperrzeit');
                     if ($minuten > 0) {
                         $sperreBis = time() + ($minuten * 60);
                         $this->WriteAttributeInteger('attr_sperre_bis', $sperreBis);
-                        $this->LogMessage("Sperrzeit manuell bis " . date("H:i:s", $sperreBis), KL_MESSAGE);
+                        $this->LogMessage($this->logPrefix() . "Sperrzeit manuell bis " . date("H:i:s", $sperreBis), KL_MESSAGE);
                     }
                 }
             }
@@ -1145,11 +1151,11 @@ class Aktor extends IPSModule {
                     $thr = $this->getThreshold('set_light_level_up');
                     if ($lux > $thr) {
                         $this->DrivePositionWithLamellaAfterArrival(0);
-                        $this->LogMessage("Nachgepruefte Oeffnung bei Lux={$lux} > {$thr}", KL_MESSAGE);
+                        $this->LogMessage($this->logPrefix() . "Nachgepruefte Oeffnung bei Lux={$lux} > {$thr}", KL_MESSAGE);
                         $this->WriteAttributeBoolean('PendingOpen', false);
                         $this->UnregisterMessage($SenderID, VM_UPDATE);
                     } else {
-                        $this->LogMessage("Nachgepruefte Oeffnung blockiert - Lux={$lux} < {$thr}", KL_MESSAGE);
+                        $this->LogMessage($this->logPrefix() . "Nachgepruefte Oeffnung blockiert - Lux={$lux} < {$thr}", KL_MESSAGE);
                     }
                 }
     
@@ -1158,11 +1164,11 @@ class Aktor extends IPSModule {
                     $thr = $this->getThreshold('set_light_level_down');
                     if ($lux < $thr) {
                         $this->DrivePositionWithLamellaAfterArrival(100);
-                        $this->LogMessage("Nachgeprueftes Schliessen bei Lux={$lux} < {$thr}", KL_MESSAGE);
+                        $this->LogMessage($this->logPrefix() . "Nachgeprueftes Schliessen bei Lux={$lux} < {$thr}", KL_MESSAGE);
                         $this->WriteAttributeBoolean('PendingClose', false);
                         $this->UnregisterMessage($SenderID, VM_UPDATE);
                     } else {
-                        $this->LogMessage("Nachgeprueftes Schliessen blockiert - Lux={$lux} > {$thr}", KL_MESSAGE);
+                        $this->LogMessage($this->logPrefix() . "Nachgeprueftes Schliessen blockiert - Lux={$lux} > {$thr}", KL_MESSAGE);
                     }
                 }
             }
@@ -1175,19 +1181,19 @@ class Aktor extends IPSModule {
         $planID = $this->ReadAttributeInteger("attr_HeatingPlanID");
 
         if ($planID === 0 || !IPS_EventExists($planID)) {
-            $this->LogMessage("Automatikpruefung: Kein Wochenplan vorhanden.", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "Automatikpruefung: Kein Wochenplan vorhanden.", KL_MESSAGE);
             return false;
         }
 
         $eventInfo = IPS_GetEvent($planID);
         $actionID = $eventInfo['LastActionID'] ?? null;
         if ($actionID === null) {
-            $this->LogMessage("Automatikpruefung: Wochenplan-Aktion konnte nicht ermittelt werden (LastActionID nicht verfuegbar).", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "Automatikpruefung: Wochenplan-Aktion konnte nicht ermittelt werden (LastActionID nicht verfuegbar).", KL_MESSAGE);
             return true;
         }
 
         if ($actionID !== 0) {
-            $this->LogMessage("Automatikpruefung: Wochenplan steht nicht auf Aktion 0.", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "Automatikpruefung: Wochenplan steht nicht auf Aktion 0.", KL_MESSAGE);
             return false;
         }
     
@@ -1195,6 +1201,11 @@ class Aktor extends IPSModule {
     }
 
 
+
+    private function logPrefix(): string
+    {
+        return "Beschattung [" . IPS_GetName($this->InstanceID) . "]: ";
+    }
 
     private function getThreshold(string $ident): int
     {
@@ -1205,7 +1216,7 @@ class Aktor extends IPSModule {
     {
         $positionID = $this->ReadPropertyInteger("prop_position");
         if (!IPS_VariableExists($positionID)) {
-            $this->LogMessage("[Rueckhub] Abbruch - Positions-ID ungueltig.", KL_ERROR);
+            $this->LogMessage($this->logPrefix() . "[Rueckhub] Abbruch - Positions-ID ungueltig.", KL_ERROR);
             return;
         }
 
@@ -1213,7 +1224,7 @@ class Aktor extends IPSModule {
         $this->WriteAttributeInteger('attr_internal_target_position', (int)$ziel);
         $this->WriteAttributeInteger('attr_internal_request_ts_position', time());
         RequestAction($positionID, $ziel);
-        $this->LogMessage("[Wochenplan] Position auf {$ziel}% gesetzt.", KL_MESSAGE);
+        $this->LogMessage($this->logPrefix() . "[Wochenplan] Position auf {$ziel}% gesetzt.", KL_MESSAGE);
     }
 
 

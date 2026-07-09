@@ -170,7 +170,7 @@
                 {
                   "type": "Select",
                   "name": "prop_automatik_nach_manuell_aktion",
-                  "caption": "Nach manueller Bedienung:",
+                  "caption": "Nach manueller Bedienung",
                   "width": "300px",
                   "options": [
                     { "caption": "Nie sperren", "value": 0 },
@@ -186,7 +186,7 @@
                 {
                   "type": "NumberSpinner",
                   "name": "prop_sperrzeit",
-                  "caption": "Sperrzeit",
+                  "caption": "Sperrzeit nach manueller Bedienung",
                   "suffix": "Minuten",
                   "minimum": "0",
                   "width":"300px",
@@ -206,7 +206,7 @@
                     {
                       "type": "NumberSpinner",
                       "name": "prop_automatik_debounce_min",
-                      "caption": "Prüfintervall",
+                      "caption": "Prüfintervall bei Sensorupdates",
                       "suffix": "Minuten",
                       "minimum": 0,
                       "width": "300px",
