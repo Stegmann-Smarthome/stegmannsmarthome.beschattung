@@ -1062,7 +1062,9 @@ class Aktor extends IPSModule {
         if ($Message === VM_UPDATE) {
             // 0) Ereignisgesteuerte Automatik mit Debounce (Sensor-Updates)
             $isAutomatik = $this->ReadPropertyBoolean('prop_automatikmodus_aktivieren');
-            if ($isAutomatik) {
+            $modusId = @$this->GetIDForIdent('select_modus');
+            $aktuellerModus = ($modusId !== false) ? GetValue($modusId) : null;
+            if ($isAutomatik && $aktuellerModus === 2) {
                 $hid = $this->ReadPropertyInteger('prop_helligkeit');
                 $tid = $this->ReadPropertyInteger('prop_temperatur');
                 $aid = $this->ReadPropertyInteger('prop_azimut');
@@ -1176,6 +1178,55 @@ class Aktor extends IPSModule {
     }
     
 
+    // Ermittelt die aktuell gültige Wochenplan-Aktion live anhand der ScheduleGroups
+    // (IP-Symcon bietet keine API, um die "gerade aktive" Aktion direkt abzufragen).
+    // Es werden heute und gestern betrachtet, damit auch das Fenster zwischen Mitternacht
+    // und dem ersten heutigen Zeitpunkt korrekt der letzten Aktion des Vortages zugeordnet wird.
+    private function GetCurrentWochenplanAction(int $planID): ?int
+    {
+        $event = IPS_GetEvent($planID);
+        if (empty($event['ScheduleGroups']) || !is_array($event['ScheduleGroups'])) {
+            return null;
+        }
+
+        $now = time();
+        $points = [];
+
+        foreach ([0, 1] as $daysAgo) { // 0 = heute, 1 = gestern
+            $day = strtotime("-{$daysAgo} day", $now);
+            $weekday = (int) date('N', $day); // Mo=1 … So=7
+
+            foreach ($event['ScheduleGroups'] as $group) {
+                if (!($group['Days'] & (1 << ($weekday - 1)))) {
+                    continue;
+                }
+                if (empty($group['Points']) || !is_array($group['Points'])) {
+                    continue;
+                }
+                foreach ($group['Points'] as $pt) {
+                    $ts = mktime(
+                        $pt['Start']['Hour'],
+                        $pt['Start']['Minute'],
+                        0,
+                        (int) date('n', $day),
+                        (int) date('j', $day),
+                        (int) date('Y', $day)
+                    );
+                    if ($ts <= $now) {
+                        $points[] = ['ts' => $ts, 'ActionID' => $pt['ActionID']];
+                    }
+                }
+            }
+        }
+
+        if (empty($points)) {
+            return null;
+        }
+
+        usort($points, fn($a, $b) => $a['ts'] <=> $b['ts']);
+        return (int) end($points)['ActionID'];
+    }
+
     public function IsAutomatikErlaubt(): bool
     {
         $planID = $this->ReadAttributeInteger("attr_HeatingPlanID");
@@ -1185,10 +1236,9 @@ class Aktor extends IPSModule {
             return false;
         }
 
-        $eventInfo = IPS_GetEvent($planID);
-        $actionID = $eventInfo['LastActionID'] ?? null;
+        $actionID = $this->GetCurrentWochenplanAction($planID);
         if ($actionID === null) {
-            $this->LogMessage($this->logPrefix() . "Automatikpruefung: Wochenplan-Aktion konnte nicht ermittelt werden (LastActionID nicht verfuegbar).", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "Automatikpruefung: Wochenplan-Aktion konnte nicht ermittelt werden (keine Zeitpunkte konfiguriert).", KL_MESSAGE);
             return true;
         }
 
@@ -1196,7 +1246,7 @@ class Aktor extends IPSModule {
             $this->LogMessage($this->logPrefix() . "Automatikpruefung: Wochenplan steht nicht auf Aktion 0.", KL_MESSAGE);
             return false;
         }
-    
+
         return true;
     }
 
