@@ -37,6 +37,13 @@ class Aktor extends IPSModule {
         $this->RegisterPropertyBoolean("prop_automatik_grenzwerte_anzeigen", false);
         $this->RegisterPropertyBoolean("prop_automatik_grenzwerte_temperatur_anzeigen", false);
         $this->RegisterPropertyBoolean("prop_automatik_grenzwerte_helligkeit_anzeigen", false);
+        $this->RegisterPropertyFloat("prop_automatik_temp_hysterese", 0.5);
+        $this->RegisterPropertyInteger("prop_automatik_light_hysterese", 250);
+
+        // Windschutz (modusunabhaengig, ueberstimmt Manuell/Wochenplan/Automatik)
+        $this->RegisterPropertyInteger("prop_wind", 0);
+        $this->RegisterPropertyInteger("prop_wind_schwellwert", 40);
+        $this->RegisterPropertyInteger("prop_wind_sperrzeit", 15);
 
         // Automatik nach manueller Bedienung
         // 0 = Nie sperren
@@ -51,6 +58,7 @@ class Aktor extends IPSModule {
         $this->RegisterAttributeInteger("attr_HeatingPlanID", 0);
         $this->RegisterAttributeInteger("attr_sperre_bis", 0);
         $this->RegisterAttributeInteger("attr_automatik_aus_bis", 0);
+        $this->RegisterAttributeInteger("attr_wind_gesperrt_bis", 0);
         $this->RegisterAttributeInteger('attr_last_auto_check', 0);
         $this->RegisterAttributeBoolean("attr_last_automatik_aktiv", false);
         $this->RegisterAttributeInteger('attr_internal_move_until', 0);
@@ -227,6 +235,12 @@ class Aktor extends IPSModule {
             $this->RegisterMessage($lamelleID, VM_UPDATE);
         }
 
+        // Windschutz: Sensor immer abonnieren, unabhaengig vom Modus (Manuell/Wochenplan/Automatik)
+        $windID = $this->ReadPropertyInteger('prop_wind');
+        if (IPS_VariableExists($windID)) {
+            $this->RegisterMessage($windID, VM_UPDATE);
+        }
+
         // Sensor-Subscriptions abhängig vom Automatikmodus
         $automatikAktiv = $this->ReadPropertyBoolean("prop_automatikmodus_aktivieren");
         $hid = $this->ReadPropertyInteger('prop_helligkeit');
@@ -296,6 +310,12 @@ class Aktor extends IPSModule {
                 $this->Shutter_ModusSelect(0);
             }
 
+            // Modus zurücksetzen wenn Automatikmodus deaktiviert aber Modus noch auf Automatik steht
+            if (!$automatikAktiv && GetValue($modusId) === 2) {
+                SetValue($modusId, 0);
+                $this->Shutter_ModusSelect(0);
+            }
+
             // Zustand merken
             $this->WriteAttributeBoolean("attr_last_automatik_aktiv", $automatikAktiv);
         }
@@ -361,7 +381,7 @@ class Aktor extends IPSModule {
         $hasL = IPS_VariableExists($this->ReadPropertyInteger('prop_lamelle'));
         $hasP = IPS_VariableExists($this->ReadPropertyInteger('prop_position'));
 
-        if (!$hasP) {
+        if (!$hasP || $this->ReadPropertyInteger('prop_wochenplan') === 0) {
             $this->disableFormFields($form['elements'], ['prop_level_geschlossen_anzeigen']);
         }
 
@@ -397,12 +417,15 @@ class Aktor extends IPSModule {
             $this->disableFormFields($form['elements'], ['prop_automatikmodus_aktivieren']);
         }
 
-        if (!$this->ReadPropertyBoolean('prop_automatikmodus_aktivieren')) {
-            $this->disableFormFields($form['elements'], [
-                'prop_level_beschattung_anzeigen',
-                'prop_automatik_grenzwerte_temperatur_anzeigen',
-                'prop_automatik_grenzwerte_helligkeit_anzeigen',
-            ]);
+        $automatikAktiv = $this->ReadPropertyBoolean('prop_automatikmodus_aktivieren');
+        if (!$automatikAktiv) {
+            $this->disableFormFields($form['elements'], ['prop_level_beschattung_anzeigen']);
+        }
+        if (!$automatikAktiv || !$hasT) {
+            $this->disableFormFields($form['elements'], ['prop_automatik_grenzwerte_temperatur_anzeigen']);
+        }
+        if (!$automatikAktiv || !$hasH) {
+            $this->disableFormFields($form['elements'], ['prop_automatik_grenzwerte_helligkeit_anzeigen']);
         }
 
         return json_encode($form);
@@ -657,10 +680,18 @@ class Aktor extends IPSModule {
         $this->doCheckAutoShading(true);
     }
 
-    private function doCheckAutoShading(bool $manuell): void
+    private function doCheckAutoShading(bool $manuell, string $quelle = ''): void
     {
         $trigger = $manuell ? "manuell ausgeloest" : "automatisch ausgeloest (Sensorupdate)";
-        $this->LogMessage($this->logPrefix() . "Automatikpruefung {$trigger}.", KL_MESSAGE);
+        $suffix = $quelle !== '' ? " - {$quelle}" : '';
+        $this->LogMessage($this->logPrefix() . "Automatikpruefung {$trigger}{$suffix}.", KL_MESSAGE);
+
+        // Windschutz hat Vorrang vor allem anderen
+        if ($this->isWindLocked()) {
+            $rest = $this->ReadAttributeInteger('attr_wind_gesperrt_bis') - time();
+            $this->LogMessage($this->logPrefix() . "[Automatikpruefung] Abbruch - Windschutz aktiv (noch {$rest} Sek.).", KL_MESSAGE);
+            return;
+        }
 
         // Automatik ggf. bis Tagesende deaktiviert
         $now = time();
@@ -782,17 +813,29 @@ class Aktor extends IPSModule {
 
     if ($this->ReadPropertyBoolean("prop_automatikmodus_hochfahren_helligkeit") && isset($lux)) {
         $grenze = $this->getThreshold('set_auto_light_threshold');
-        if ($lux < $grenze) {
+        $hysterese = max(0, $this->ReadPropertyInteger('prop_automatik_light_hysterese'));
+        $grenzeHochfahren = $grenze - $hysterese;
+        if ($lux < $grenzeHochfahren) {
             $hochfahren = true;
-            $this->LogMessage($this->logPrefix() . "[Endbedingung Hochfahren] Helligkeit: $lux lx < {$grenze} lx -> JA.", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "[Endbedingung Hochfahren] Helligkeit: $lux lx < {$grenzeHochfahren} lx (Grenzwert {$grenze} lx - Hysterese {$hysterese} lx) -> JA.", KL_MESSAGE);
+        } elseif ($lux < $grenze) {
+            $this->LogMessage($this->logPrefix() . "[Endbedingung Hochfahren] Helligkeit: $lux lx liegt innerhalb der Hysterese-Zone ({$grenzeHochfahren}-{$grenze} lx) -> NEIN (durch Hysterese gehalten).", KL_MESSAGE);
+        } else {
+            $this->LogMessage($this->logPrefix() . "[Endbedingung Hochfahren] Helligkeit: $lux lx >= Grenzwert {$grenze} lx -> NEIN.", KL_MESSAGE);
         }
     }
 
     if ($this->ReadPropertyBoolean("prop_automatikmodus_hochfahren_temperatur") && isset($temp)) {
         $grenze = $this->getThreshold('set_auto_temp_threshold');
-        if ($temp < $grenze) {
+        $hysterese = max(0.0, $this->ReadPropertyFloat('prop_automatik_temp_hysterese'));
+        $grenzeHochfahren = $grenze - $hysterese;
+        if ($temp < $grenzeHochfahren) {
             $hochfahren = true;
-            $this->LogMessage($this->logPrefix() . "[Endbedingung Hochfahren] Temperatur: $temp < {$grenze} -> JA.", KL_MESSAGE);
+            $this->LogMessage($this->logPrefix() . "[Endbedingung Hochfahren] Temperatur: $temp < {$grenzeHochfahren} (Grenzwert {$grenze} - Hysterese {$hysterese}) -> JA.", KL_MESSAGE);
+        } elseif ($temp < $grenze) {
+            $this->LogMessage($this->logPrefix() . "[Endbedingung Hochfahren] Temperatur: $temp liegt innerhalb der Hysterese-Zone ({$grenzeHochfahren}-{$grenze}) -> NEIN (durch Hysterese gehalten).", KL_MESSAGE);
+        } else {
+            $this->LogMessage($this->logPrefix() . "[Endbedingung Hochfahren] Temperatur: $temp >= Grenzwert {$grenze} -> NEIN.", KL_MESSAGE);
         }
     }
 
@@ -817,8 +860,51 @@ class Aktor extends IPSModule {
 
 
     }
-    
-    
+
+    // Prueft, ob die Windschutz-Sperre aktuell noch aktiv ist (Nachlaufzeit nach dem letzten Windalarm)
+    private function isWindLocked(): bool
+    {
+        return time() < $this->ReadAttributeInteger('attr_wind_gesperrt_bis');
+    }
+
+    // Liest den Windsensor aus (Boolean-Alarmkontakt oder numerische Geschwindigkeit) und
+    // faehrt die Beschattung bei Ueberschreitung sofort auf, unabhaengig vom aktuellen Modus.
+    private function checkWindSensorAndLock(): void
+    {
+        $windID = $this->ReadPropertyInteger('prop_wind');
+        if (!IPS_VariableExists($windID)) {
+            return;
+        }
+
+        $wert = GetValue($windID);
+        $variableType = IPS_GetVariable($windID)['VariableType'];
+
+        if ($variableType === VARIABLETYPE_BOOLEAN) {
+            $alarm = ($wert === true);
+            $beschreibung = $alarm ? "Alarmkontakt aktiv" : "Alarmkontakt inaktiv";
+        } else {
+            $schwellwert = $this->ReadPropertyInteger('prop_wind_schwellwert');
+            $alarm = ($wert >= $schwellwert);
+            $beschreibung = "$wert >= $schwellwert -> " . ($alarm ? 'JA' : 'NEIN');
+        }
+
+        if (!$alarm) {
+            return;
+        }
+
+        $sperrzeit = max(0, (int)$this->ReadPropertyInteger('prop_wind_sperrzeit'));
+        $gesperrtBis = time() + ($sperrzeit * 60);
+        $this->WriteAttributeInteger('attr_wind_gesperrt_bis', $gesperrtBis);
+
+        $positionID = $this->ReadPropertyInteger('prop_position');
+        $this->WriteAttributeInteger('attr_internal_target_position', 0);
+        $this->WriteAttributeInteger('attr_internal_request_ts_position', time());
+        RequestAction($positionID, 0);
+
+        $this->LogMessage($this->logPrefix() . "[Windschutz] Windalarm ({$beschreibung}) - Beschattung eingefahren, gesperrt bis " . date("H:i:s", $gesperrtBis), KL_MESSAGE);
+    }
+
+
 
     public function LamellenRueckhub()
     {
@@ -846,11 +932,11 @@ class Aktor extends IPSModule {
     }
     
 
-    public function PositionChanged(int $positionID): void
+    public function PositionChanged(int $positionID, int $wochenplan = 0): void
     {
-        $hatPosition = IPS_VariableExists($positionID);
-        $this->UpdateFormField('prop_level_geschlossen_anzeigen', 'enabled', $hatPosition);
-        if (!$hatPosition) {
+        $levelGeschlossenEnabled = IPS_VariableExists($positionID) && $wochenplan > 0;
+        $this->UpdateFormField('prop_level_geschlossen_anzeigen', 'enabled', $levelGeschlossenEnabled);
+        if (!$levelGeschlossenEnabled) {
             $this->UpdateFormField('prop_level_geschlossen_anzeigen', 'value', false);
         }
     }
@@ -866,7 +952,7 @@ class Aktor extends IPSModule {
         }
     }
 
-    public function WochenplanChanged(int $wochenplan): void
+    public function WochenplanChanged(int $wochenplan, int $positionID = 0): void
     {
         $hatWochenplan = $wochenplan > 0;
         $this->UpdateFormField('prop_automatikmodus_aktivieren', 'enabled', $hatWochenplan);
@@ -874,21 +960,37 @@ class Aktor extends IPSModule {
             $this->UpdateFormField('prop_automatikmodus_aktivieren', 'value', false);
             $this->AutomatikModusChanged(false);
         }
+
+        $levelGeschlossenEnabled = $hatWochenplan && IPS_VariableExists($positionID);
+        $this->UpdateFormField('prop_level_geschlossen_anzeigen', 'enabled', $levelGeschlossenEnabled);
+        if (!$levelGeschlossenEnabled) {
+            $this->UpdateFormField('prop_level_geschlossen_anzeigen', 'value', false);
+        }
     }
 
-    public function AutomatikModusChanged(bool $aktiv): void
+    public function AutomatikModusChanged(bool $aktiv, int $helligkeitID = 0, int $temperaturID = 0): void
     {
+        $hasH = IPS_VariableExists($helligkeitID);
+        $hasT = IPS_VariableExists($temperaturID);
+
+        $grenzwertHelligkeitEnabled = $aktiv && $hasH;
+        $grenzwertTemperaturEnabled = $aktiv && $hasT;
+
         $this->UpdateFormField('prop_level_beschattung_anzeigen',               'enabled', $aktiv);
-        $this->UpdateFormField('prop_automatik_grenzwerte_temperatur_anzeigen', 'enabled', $aktiv);
-        $this->UpdateFormField('prop_automatik_grenzwerte_helligkeit_anzeigen', 'enabled', $aktiv);
+        $this->UpdateFormField('prop_automatik_grenzwerte_temperatur_anzeigen', 'enabled', $grenzwertTemperaturEnabled);
+        $this->UpdateFormField('prop_automatik_grenzwerte_helligkeit_anzeigen', 'enabled', $grenzwertHelligkeitEnabled);
         if (!$aktiv) {
-            $this->UpdateFormField('prop_level_beschattung_anzeigen',               'value', false);
+            $this->UpdateFormField('prop_level_beschattung_anzeigen', 'value', false);
+        }
+        if (!$grenzwertTemperaturEnabled) {
             $this->UpdateFormField('prop_automatik_grenzwerte_temperatur_anzeigen', 'value', false);
+        }
+        if (!$grenzwertHelligkeitEnabled) {
             $this->UpdateFormField('prop_automatik_grenzwerte_helligkeit_anzeigen', 'value', false);
         }
     }
 
-    public function SensorChanged(int $helligkeitID, int $temperaturID, int $azimutID): void
+    public function SensorChanged(int $helligkeitID, int $temperaturID, int $azimutID, bool $automatikAktiv = false): void
     {
         $hasH = IPS_VariableExists($helligkeitID);
         $hasT = IPS_VariableExists($temperaturID);
@@ -918,6 +1020,17 @@ class Aktor extends IPSModule {
             $this->UpdateFormField('prop_automatikmodus_runterfahren_azimut', 'value', false);
             $this->UpdateFormField('prop_automatikmodus_hochfahren_azimut',   'value', false);
         }
+
+        $grenzwertHelligkeitEnabled = $automatikAktiv && $hasH;
+        $grenzwertTemperaturEnabled = $automatikAktiv && $hasT;
+        $this->UpdateFormField('prop_automatik_grenzwerte_helligkeit_anzeigen', 'enabled', $grenzwertHelligkeitEnabled);
+        $this->UpdateFormField('prop_automatik_grenzwerte_temperatur_anzeigen', 'enabled', $grenzwertTemperaturEnabled);
+        if (!$grenzwertHelligkeitEnabled) {
+            $this->UpdateFormField('prop_automatik_grenzwerte_helligkeit_anzeigen', 'value', false);
+        }
+        if (!$grenzwertTemperaturEnabled) {
+            $this->UpdateFormField('prop_automatik_grenzwerte_temperatur_anzeigen', 'value', false);
+        }
     }
 
     public function PresetChanged(int $preset): void
@@ -943,10 +1056,18 @@ class Aktor extends IPSModule {
 
     public function Beschattung_Wochenplan(int $id, int $actionID) {
         $this->LogMessage($this->logPrefix() . "Wochenplan: Aktion $actionID wurde ausgeloest", KL_MESSAGE);
-    
+
+        // Windschutz hat Vorrang vor dem Wochenplan
+        if ($this->isWindLocked()) {
+            $rest = $this->ReadAttributeInteger('attr_wind_gesperrt_bis') - time();
+            $this->LogMessage($this->logPrefix() . "[Wochenplan] Abbruch - Windschutz aktiv (noch {$rest} Sek.).", KL_MESSAGE);
+            return;
+        }
+
         $positionID = $this->ReadPropertyInteger("prop_position");
         $planID     = $this->ReadAttributeInteger("attr_HeatingPlanID");
-        $zielwert   = ($actionID == 0) ? 0 : 100;
+        $levelGeschlossen = GetValue($this->GetIDForIdent("set_level_closed"));
+        $zielwert   = ($actionID == 0) ? 0 : $levelGeschlossen;
     
         if ($this->ReadPropertyBoolean("prop_wochenplan_helligkeit")
          && $this->IsFirstOrLastScheduleActionToday($planID, $actionID)) {
@@ -1060,6 +1181,12 @@ class Aktor extends IPSModule {
         $lamelleID  = $this->ReadPropertyInteger("prop_lamelle");
     
         if ($Message === VM_UPDATE) {
+            // -1) Windschutz: hoechste Prioritaet, modusunabhaengig, ungedrosselt
+            $windID = $this->ReadPropertyInteger('prop_wind');
+            if ($SenderID == $windID) {
+                $this->checkWindSensorAndLock();
+            }
+
             // 0) Ereignisgesteuerte Automatik mit Debounce (Sensor-Updates)
             $isAutomatik = $this->ReadPropertyBoolean('prop_automatikmodus_aktivieren');
             $modusId = @$this->GetIDForIdent('select_modus');
@@ -1074,7 +1201,10 @@ class Aktor extends IPSModule {
                     $last = $this->ReadAttributeInteger('attr_last_auto_check');
                     $debMin = max(0, (int)$this->ReadPropertyInteger('prop_automatik_debounce_min'));
                     if ($now - $last >= ($debMin * 60)) {
-                        $this->doCheckAutoShading(false);
+                        $sensorName = IPS_GetName($SenderID);
+                        $sensorWert = $Data[0] ?? (IPS_VariableExists($SenderID) ? GetValue($SenderID) : null);
+                        $quelle = "ausgeloest durch '{$sensorName}' (ID {$SenderID}), neuer Wert={$sensorWert}";
+                        $this->doCheckAutoShading(false, $quelle);
                         $this->WriteAttributeInteger('attr_last_auto_check', $now);
                     }
                 }

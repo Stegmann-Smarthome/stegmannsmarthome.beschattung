@@ -17,7 +17,7 @@
                 "value": "",
                 "caption": "Rolladenstellung: Aktor-ID - Auswahl der Variable",
                 "width": "600px",
-                "onChange": "BS_PositionChanged($id, $prop_position);"
+                "onChange": "BS_PositionChanged($id, $prop_position, $prop_wochenplan);"
               },
               {
                 "type": "SelectVariable",
@@ -32,7 +32,7 @@
                 "name": "prop_wochenplan",
                 "caption": "Wochenplanerstellung:",
                 "width": "600px",
-                "onChange": "BS_WochenplanChanged($id, $prop_wochenplan);",
+                "onChange": "BS_WochenplanChanged($id, $prop_wochenplan, $prop_position);",
                 "options": [
                   { "caption": "Kein Wochenplan / Wochenplan löschen", "value": 0 },
                   { "caption": "Wochenplan: Eine Gruppe: Gesamte Woche (Mo - So)", "value": 1 },
@@ -57,7 +57,7 @@
                 "caption": "Helligkeitssensor:",
                 "hint": "Wähle die Variable, die den aktuellen Lux-Wert liefert.",
                 "width": "400px",
-                "onChange": "BS_SensorChanged($id, $prop_helligkeit, $prop_temperatur, $prop_azimut);"
+                "onChange": "BS_SensorChanged($id, $prop_helligkeit, $prop_temperatur, $prop_azimut, $prop_automatikmodus_aktivieren);"
               },
               {
                 "type": "SelectVariable",
@@ -65,14 +65,14 @@
                 "caption": "Temperatursensor:",
                 "hint": "Wähle die Variable, die die aktuelle Temperatur liefert.",
                 "width": "400px",
-                "onChange": "BS_SensorChanged($id, $prop_helligkeit, $prop_temperatur, $prop_azimut);"
+                "onChange": "BS_SensorChanged($id, $prop_helligkeit, $prop_temperatur, $prop_azimut, $prop_automatikmodus_aktivieren);"
               },
               {
                 "type": "SelectVariable",
                 "name": "prop_azimut",
                 "caption": "Azimut:",
                 "width": "400px",
-                "onChange": "BS_SensorChanged($id, $prop_helligkeit, $prop_temperatur, $prop_azimut);"
+                "onChange": "BS_SensorChanged($id, $prop_helligkeit, $prop_temperatur, $prop_azimut, $prop_automatikmodus_aktivieren);"
               }
             ]
           }
@@ -131,51 +131,48 @@
                   "name": "prop_automatikmodus_aktivieren",
                   "caption": "Automatikmodus",
                   "width": "300px",
-                  "onChange": "BS_AutomatikModusChanged($id, $prop_automatikmodus_aktivieren);"
-                },
-                {
-                  "type": "Label",
-                  "caption": "",
-                  "width": "120px"
-                },
-                {
-                  "type": "CheckBox",
-                  "name": "prop_automatik_grenzwerte_temperatur_anzeigen",
-                  "caption": "Temperatur: Grenzwert im WebFront anpassbar",
-                  "hint": "Zeigt die Temperaturgrenze zur Automatiksteuerung im WebFront an.",
-                  "width": "420px"
-                },
-                {
-                  "type": "CheckBox",
-                  "name": "prop_automatik_grenzwerte_helligkeit_anzeigen",
-                  "caption": "Helligkeit: Grenzwert im WebFront anpassbar",
-                  "hint": "Zeigt die Helligkeitsgrenze zur Automatiksteuerung im WebFront an.",
-                  "width": "420px"
+                  "onChange": "BS_AutomatikModusChanged($id, $prop_automatikmodus_aktivieren, $prop_helligkeit, $prop_temperatur);"
                 }
               ]
             },
             {
                   "type": "Label",
                   "caption": "",
-                  "width": "120px"
-            },
-            {
-                  "type": "Label",
-                  "caption": "",
-                  "width": "120px"
+                  "width": "20px"
             },
             {
               "type": "RowLayout",
               "items": [
                 {
-                  "type": "Select",
-                  "name": "prop_automatik_nach_manuell_aktion",
-                  "caption": "Nach manueller Bedienung",
-                  "width": "300px",
-                  "options": [
-                    { "caption": "Nie sperren", "value": 0 },
-                    { "caption": "Benutzerdefiniert (Sperrzeit)", "value": 1 },
-                    { "caption": "Bis Tagesende deaktivieren", "value": 2 }
+                  "type": "ColumnLayout",
+                  "items": [
+                    { "type": "Label",
+                      "caption": "Sperrverhalten & Zeitsteuerung",
+                      "bold": true
+                    },
+                    {
+                      "type": "Select",
+                      "name": "prop_automatik_nach_manuell_aktion",
+                      "caption": "Nach manueller Bedienung",
+                      "width": "300px",
+                      "options": [
+                        { "caption": "Nie sperren", "value": 0 },
+                        { "caption": "Benutzerdefiniert (Sperrzeit)", "value": 1 },
+                        { "caption": "Bis Tagesende deaktivieren", "value": 2 }
+                      ]
+                    },
+                    {
+                      "type": "NumberSpinner",
+                      "name": "prop_sperrzeit",
+                      "caption": "Sperrzeit nach manueller Bedienung",
+                      "suffix": "Minuten",
+                      "minimum": "0",
+                      "width":"300px",
+                      "visible": {
+                        "name": "prop_automatik_nach_manuell_aktion",
+                        "value": 1
+                      }
+                    }
                   ]
                 },
                 {
@@ -184,25 +181,55 @@
                   "width": "120px"
                 },
                 {
-                  "type": "NumberSpinner",
-                  "name": "prop_sperrzeit",
-                  "caption": "Sperrzeit nach manueller Bedienung",
-                  "suffix": "Minuten",
-                  "minimum": "0",
-                  "width":"300px",
-                  "visible": {
-                    "name": "prop_automatik_nach_manuell_aktion",
-                    "value": 1
-                  }
-                }
-              ]
-            },
-            {
-              "type": "RowLayout",
-              "items": [
+                  "type": "ColumnLayout",
+                  "items": [
+                    { "type": "Label",
+                      "caption": "Hysterese (Beschattung beenden)",
+                      "bold": true
+                    },
+                    {
+                      "type": "NumberSpinner",
+                      "name": "prop_automatik_temp_hysterese",
+                      "caption": "Temperatur Hysterese",
+                      "suffix": "°C",
+                      "digits": 1,
+                      "minimum": 0,
+                      "maximum": 10,
+                      "width": "300px",
+                      "hint": "Beschattung fährt erst hoch, wenn die Temperatur um diesen Betrag unter den Grenzwert gefallen ist. Verhindert häufiges Auf-/Zufahren bei schwankenden Werten.",
+                      "visible": {
+                        "name": "prop_automatikmodus_hochfahren_temperatur",
+                        "value": true
+                      }
+                    },
+                    {
+                      "type": "NumberSpinner",
+                      "name": "prop_automatik_light_hysterese",
+                      "caption": "Helligkeit Hysterese",
+                      "suffix": "Lux",
+                      "minimum": 0,
+                      "maximum": 2000,
+                      "width": "300px",
+                      "hint": "Beschattung fährt erst hoch, wenn die Helligkeit um diesen Betrag unter den Grenzwert gefallen ist. Verhindert häufiges Auf-/Zufahren bei schwankenden Werten.",
+                      "visible": {
+                        "name": "prop_automatikmodus_hochfahren_helligkeit",
+                        "value": true
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "Label",
+                  "caption": "",
+                  "width": "120px"
+                },
                 {
                   "type": "ColumnLayout",
                   "items": [
+                    { "type": "Label",
+                      "caption": "Automatikprüfung",
+                      "bold": true
+                    },
                     {
                       "type": "NumberSpinner",
                       "name": "prop_automatik_debounce_min",
@@ -211,6 +238,44 @@
                       "minimum": 0,
                       "width": "300px",
                       "hint": "Mindestens so viele Minuten zwischen zwei Automatikprüfungen bei Sensor-Events."
+                    },
+                    {
+                      "type": "Label",
+                      "caption": "",
+                      "width": "0px"
+                    },
+                                        {
+                      "type": "Label",
+                      "caption": "",
+                      "width": "0px"
+                    },
+                                        {
+                      "type": "Label",
+                      "caption": "",
+                      "width": "0px"
+                    },                    {
+                      "type": "Label",
+                      "caption": "",
+                      "width": "0px"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+                  "type": "Label",
+                  "caption": "",
+                  "width": "20px"
+            },
+            {
+              "type": "RowLayout",
+              "items": [
+                {
+                  "type": "ColumnLayout",
+                  "items": [
+                    { "type": "Label",
+                      "caption": "Fensterausrichtung & Azimut",
+                      "bold": true
                     },
                     {
                       "type": "Select",
@@ -258,29 +323,40 @@
                 {
                   "type": "ColumnLayout",
                   "items": [
-                    {
+                                        {
+                      "type": "Label",
+                      "caption": "",
+                      "width": "0px"
+                    },
+                                        {
+                      "type": "Label",
+                      "caption": "",
+                      "width": "0px"
+                    },
+                                        {
+                      "type": "Label",
+                      "caption": "",
+                      "width": "0px"
+                    },
+                                        {
+                      "type": "Label",
+                      "caption": "",
+                      "width": "0px"
+                    },
+                                        {
+                      "type": "Label",
+                      "caption": "",
+                      "width": "0px"
+                    },
+                                        {
                       "type": "Label",
                       "caption": "",
                       "width": "0px"
                     },
                     {
                       "type": "Label",
-                      "caption": "",
-                      "width": "0px"
-                    },
-                    {
-                      "type": "Label",
-                      "caption": "",
-                      "width": "0px"
-                    },
-                    {
-                      "type": "Label",
-                      "caption": "",
-                      "width": "0px"
-                    },
-                    {
-                      "type": "Label",
-                      "caption": "Beschattung starten: Alle aktivierten Bedingungen müssen erfüllt sein (UND-Verknüpfung)"
+                      "caption": "Beschattung starten: Alle aktivierten Bedingungen müssen erfüllt sein (UND-Verknüpfung)",
+                      "bold": true
                     },
                     {
                       "type": "CheckBox",
@@ -307,12 +383,8 @@
                     },
                     {
                       "type": "Label",
-                      "caption": "",
-                      "width": "0px"
-                    },
-                    {
-                      "type": "Label",
-                      "caption": "Beschattung beenden: Eine aktivierte Bedingung muss erfüllt sein (ODER-Verknüpfung)"
+                      "caption": "Beschattung beenden: Eine aktivierte Bedingung muss erfüllt sein (ODER-Verknüpfung)",
+                      "bold": true
                     },
                     {
                       "type": "CheckBox",
@@ -335,12 +407,48 @@
                   ]
                 }
               ]
+            },
+            {
+              "type": "Label",
+              "caption": "",
+              "width": "20px"
+            },
+                        {
+              "type": "Label",
+              "caption": "",
+              "width": "20px"
+            },
+                        {
+              "type": "Label",
+              "caption": "",
+              "width": "20px"
+            },
+            { "type": "Label",
+              "caption": "Variablen im Webfront einblenden / ausblenden",
+              "bold": true
+            },
+            {
+              "type": "CheckBox",
+              "name": "prop_automatik_grenzwerte_temperatur_anzeigen",
+              "caption": "Temperatur: Grenzwert",
+              "hint": "Zeigt die Temperaturgrenze zur Automatiksteuerung im WebFront an."
+            },
+            {
+              "type": "CheckBox",
+              "name": "prop_automatik_grenzwerte_helligkeit_anzeigen",
+              "caption": "Helligkeit: Grenzwert",
+              "hint": "Zeigt die Helligkeitsgrenze zur Automatiksteuerung im WebFront an."
+            },
+            {
+              "type": "CheckBox",
+              "name": "prop_level_beschattung_anzeigen",
+              "caption": "Level: Beschattung"
             }
           ]
       },
       {
         "type": "ExpansionPanel",
-        "caption": "Wochenplan: Zusatzbedingungen",
+        "caption": "Modus: Wochenplan",
         "expanded": false,
         "items": [
           {
@@ -357,41 +465,67 @@
             }
           },
           {
+            "type": "Label",
+            "caption": "",
+            "width": "0px"
+        },
+          { "type": "Label",
+            "caption": "Variablen im Webfront einblenden / ausblenden",
+            "bold": true
+          },
+          {
             "type": "CheckBox",
             "name": "prop_wochenplan_helligkeit_einstellungen",
-            "caption": "Einstellbar über Webfront (Grenzwerte: Temperatur + Helligkeit)",
+            "caption": "Wochenplan: Helligkeit hoch + runter",
             "visible": {
               "name": "prop_wochenplan_helligkeit",
               "value": true
             }
+          },
+          {
+            "type": "CheckBox",
+            "name": "prop_level_geschlossen_anzeigen",
+            "caption": "Level: Geschlossen"
           }
         ]
       },
       {
-        "type": "Label",
-        "caption": "",
-        "width": "80px"
-      },
-      {
-        "type": "Label",
-        "caption": "",
-        "width": "80px"
-      },
-      { "type": "Label",
-        "caption": "4. Variablen einblenden / ausblenden",
-        "bold": true
-      },
-      {
-        "type": "CheckBox",
-        "name": "prop_level_geschlossen_anzeigen",
-        "caption": "Variable: Level Geschlossen",
-        "width": "700px"
-      },
-      {
-        "type": "CheckBox",
-        "name": "prop_level_beschattung_anzeigen",
-        "caption": "Variable: Level Beschattung",
-        "width": "700px"
+        "type": "ExpansionPanel",
+        "caption": "Option: Sturmschutz",
+        "expanded": false,
+        "items": [
+          {
+            "type": "Label",
+            "caption": "Überstimmt bei Auslösung sofort Manuell, Wochenplan und Automatik und fährt die Beschattung ein."
+          },
+          {
+            "type": "SelectVariable",
+            "name": "prop_wind",
+            "caption": "Windsensor (Geschwindigkeit oder Alarmkontakt):",
+            "hint": "Numerische Windgeschwindigkeit oder ein boolescher Alarmkontakt.",
+            "width": "400px"
+          },
+          {
+            "type": "NumberSpinner",
+            "name": "prop_wind_schwellwert",
+            "caption": "Wind-Schwellwert",
+            "suffix": "km/h",
+            "minimum": 0,
+            "maximum": 150,
+            "width": "300px",
+            "hint": "Nur relevant, wenn der Windsensor eine Geschwindigkeit liefert (kein Alarmkontakt)."
+          },
+          {
+            "type": "NumberSpinner",
+            "name": "prop_wind_sperrzeit",
+            "caption": "Nachlaufzeit nach Windalarm",
+            "suffix": "Minuten",
+            "minimum": 0,
+            "maximum": 120,
+            "width": "300px",
+            "hint": "Solange nach dem letzten Windalarm noch keine so lange Zeit vergangen ist, bleibt die Beschattung eingefahren und gesperrt."
+          }
+        ]
       },
       {
         "type": "Label",
